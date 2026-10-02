@@ -1,0 +1,532 @@
+//! Local organization and explicit follow-up controls over the host boundary.
+use super::*;
+use interaction::Choice;
+use ratatui::widgets::Clear;
+
+#[derive(Default)]
+pub struct Workflow {
+    pub queued_requests: std::collections::HashSet<String>,
+    pub busy: bool,
+    pub cancellation: String,
+    pub quit_confirmation: Option<bool>,
+    pub quit_buttons: Vec<(Rect, bool)>,
+    pub meter: native::TurnMeter,
+    pub clocks: native::ActivityClocks,
+    pub rows: Vec<Value>,
+    pub paused: bool,
+    pub prompt: Option<Prompt>,
+    pub conflict: Option<Arc<Value>>,
+    pub recovery: Option<Arc<Value>>,
+}
+
+pub struct Prompt {
+    pub kind: String,
+    pub editor: TextArea<'static>,
+    pub identity: Option<String>,
+    pub pending: Option<String>,
+    pub question: Option<(String, String)>,
+}
+
+fn choice(label: impl Into<String>, action: Action, detail: impl Into<String>) -> Choice {
+    Choice {
+        label: label.into(),
+        action,
+        detail: detail.into(),
+    }
+}
+
+impl App {
+    pub fn quit_key(&mut self, key: crossterm::event::KeyEvent) -> Option<bool> {
+        let yes = self.flow.quit_confirmation?;
+        match key.code {
+            KeyCode::Char('q') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                return Some(false);
+            }
+            KeyCode::Char(c)
+                if c.eq_ignore_ascii_case(&'c')
+                    && key.modifiers.contains(KeyModifiers::CONTROL) =>
+            {
+                self.flow.quit_confirmation = None;
+            }
+            KeyCode::Esc | KeyCode::Char('n' | 'N') => self.flow.quit_confirmation = None,
+            KeyCode::Enter => {
+                self.flow.quit_confirmation = None;
+                return Some(!yes);
+            }
+            KeyCode::Char('y' | 'Y') => return Some(false),
+            KeyCode::Up
+            | KeyCode::Down
+            | KeyCode::Left
+            | KeyCode::Right
+            | KeyCode::Tab
+            | KeyCode::BackTab => {
+                self.flow.quit_confirmation = Some(!yes);
+            }
+            _ => (),
+        }
+        Some(true)
+    }
+
+    pub fn draw_quit_confirmation(&mut self, f: &mut Frame) {
+        self.flow.quit_buttons.clear();
+        let Some(yes) = self.flow.quit_confirmation else {
+            return;
+        };
+        let outer = f.area();
+        let width = outer.width.min(54);
+        let height = outer.height.min(8);
+        let area = Rect::new(
+            (outer.width - width) / 2,
+            (outer.height - height) / 2,
+            width,
+            height,
+        );
+        f.render_widget(Clear, area);
+        f.render_widget(
+            Block::bordered()
+                .title(" Quit Amplifier? ")
+                .style(Style::default().fg(palette().green).bg(palette().panel)),
+            area,
+        );
+        let inner = Rect::new(
+            area.x + 1,
+            area.y + 1,
+            width.saturating_sub(2),
+            height.saturating_sub(2),
+        );
+        for (offset, label, selected) in [(1, "No, stay here", false), (2, "Yes, quit", true)] {
+            if offset >= inner.height {
+                continue;
+            }
+            let row = Rect::new(inner.x, inner.y + offset, inner.width, 1);
+            self.flow.quit_buttons.push((row, selected));
+            f.render_widget(
+                Paragraph::new(format!(
+                    "{} {label}",
+                    if yes == selected { "›" } else { " " }
+                ))
+                .style(
+                    Style::default()
+                        .fg(if yes == selected {
+                            palette().green
+                        } else {
+                            palette().muted
+                        })
+                        .bg(palette().panel),
+                ),
+                row,
+            );
+        }
+        if inner.height > 4 {
+            text(
+                f,
+                Rect::new(inner.x, inner.y + 4, inner.width, 1),
+                "Enter choose · Esc stay",
+                palette().muted,
+            );
+        }
+    }
+
+    pub fn prompt(&mut self, kind: &str) {
+        let mut input = editor();
+        input.set_placeholder_text(match kind {
+            "Rename conversation" => "New name (up to 100 characters)…",
+            "New provider overlay" => "Trusted overlay file path · creates a NEW conversation…",
+            "Insert text file" => "Workspace-relative path · UTF-8 text, at most 64 KiB…",
+            "Attach image" => "Workspace-relative PNG/JPEG/static GIF/WebP path · at most 2 MiB…",
+            "Attach file reference" => {
+                "Workspace-relative file[:line or :start-end] · UTF-8, at most 64 KiB…"
+            }
+            "Find in conversation" => "Find message text…",
+            "Search saved conversations" => "Saved message text, title, directory or ID…",
+            "Correct active turn" => "Correction for this turn only (Alt+Enter newline)…",
+            "Answer question" => {
+                "Your answer · Enter saves locally for review · Alt+Enter newline…"
+            }
+            _ => "Follow-up text…",
+        });
+        self.flow.prompt = Some(Prompt {
+            kind: kind.into(),
+            editor: input,
+            identity: None,
+            pending: None,
+            question: None,
+        });
+    }
+
+    pub fn prompt_key(&mut self, key: crossterm::event::KeyEvent) -> Option<bool> {
+        if matches!(key.code, KeyCode::Esc | KeyCode::Enter) {
+            self.retain_editor();
+        }
+        let prompt = self.flow.prompt.as_mut()?;
+        // A lost acknowledgement must not trap the editor or imply a retry.
+        // Keep its text copyable, allow Escape, and never resend while disconnected.
+        if self.disconnected {
+            match key.code {
+                KeyCode::Esc => self.flow.prompt = None,
+                KeyCode::F(2) => self.copy = Some(prompt.editor.lines().join("\n")),
+                _ => (),
+            }
+            return Some(true);
+        }
+        if prompt.pending.is_some() {
+            return Some(true);
+        }
+        match key.code {
+            KeyCode::F(2) => self.copy = Some(prompt.editor.lines().join("\n")),
+            KeyCode::Enter
+                if key.modifiers.contains(KeyModifiers::ALT) && prompt.identity.is_some() =>
+            {
+                prompt.editor.insert_newline();
+            }
+            KeyCode::Esc => {
+                let prompt = self.flow.prompt.take().unwrap();
+                if let Some((id, qid)) = prompt.question {
+                    if self.questions.pending.contains_key(&id) {
+                        self.save_question_text(id, qid, prompt.editor.lines().join("\n"));
+                    }
+                    self.ui.menu = None;
+                }
+            }
+            KeyCode::Enter if key.kind == KeyEventKind::Press => {
+                let mut prompt = self.flow.prompt.take().unwrap();
+                let value = prompt.editor.lines().join("\n");
+                if prompt.kind == "Continue captured child" {
+                    if let Some(row) = self.flow.recovery.clone() {
+                        self.menu(
+                            "Adopt interrupted child?",
+                            vec![choice(
+                                "Run NEW child with this instruction",
+                                Action::RecoverChildApply(row, value),
+                                "",
+                            )],
+                        );
+                        self.ui.menu.as_mut().unwrap().detail = "This starts new execution under the CURRENT ROOT with captured public messages. Nested children are explicitly reparented after ancestry/policy checks; ancestors are never executed or restored. Verified results stay; missing outcomes are UNKNOWN, never retried. Original receipts stay unchanged. Requires unchanged supported context, stateless loop and mode; persistent adoption uses a fresh store. Private state refuses. The new instruction can cause new effects. Escape cancels.".into();
+                    }
+                    return Some(true);
+                }
+                if prompt.kind == "New provider overlay" {
+                    self.menu(
+                        "Adopt new provider composition?",
+                        vec![choice(
+                            "Create new conversation with captured public context",
+                            Action::ForkCompositionApply(value.clone()),
+                            "",
+                        )],
+                    );
+                    self.ui.menu.as_mut().unwrap().detail = format!(
+                        "Overlay: {}\nOriginal conversation remains intact. Copies public messages, not provider pins, modes, queued work or module-private state. The overlay is executable configuration: trust its source. No model call until your next explicit Send; that Send may share the captured context with a different provider. Escape changes nothing.",
+                        safe(&value)
+                    );
+                    return Some(true);
+                }
+                if prompt.kind == "Edit conflict proposal" {
+                    if let Some(snapshot) = self.flow.conflict.clone() {
+                        self.menu(
+                            "Apply conflict proposal? · workspace write",
+                            vec![
+                                choice(
+                                    "Apply exact proposal · backup original, do not stage",
+                                    Action::WorkspaceEditApply(snapshot.clone(), value.clone()),
+                                    "",
+                                ),
+                                choice("Copy proposed text", Action::CopyText(value.clone()), ""),
+                            ],
+                        );
+                        self.ui.menu.as_mut().unwrap().detail = format!(
+                            "Path: {}\nCaptured SHA-256: {}\n{}\n\nProposed replacement:\n{}",
+                            safe(&string(&snapshot, "path")),
+                            string(&snapshot, "sha256"),
+                            safe(&string(&snapshot, "notice")),
+                            safe(&value)
+                        );
+                    }
+                    return Some(true);
+                }
+                if prompt.kind == "Search saved conversations" {
+                    self.conversation_page(0, value);
+                    return Some(true);
+                }
+                if matches!(
+                    prompt.kind.as_str(),
+                    "Insert text file" | "Attach image" | "Attach file reference"
+                ) {
+                    self.insights.file_request = Some((
+                        (self.request + 1).to_string(),
+                        self.draft.lines().join("\n"),
+                    ));
+                    self.menu("Text file · reading", vec![]);
+                    let op = match prompt.kind.as_str() {
+                        "Attach image" => "image_snapshot",
+                        "Attach file reference" => "reference_snapshot",
+                        _ => "file_snapshot",
+                    };
+                    self.send(json!({"op":op,"path":value}));
+                    return Some(true);
+                }
+                if let Some((id, _)) = &prompt.question
+                    && (!self.questions.pending.contains_key(id) || value.chars().count() > 65536)
+                {
+                    self.status = "Question expired or answer exceeds 65536 characters. F2 copies; Esc discards; nothing sent".into();
+                    self.flow.prompt = Some(prompt);
+                    return Some(true);
+                }
+                if let Some((id, qid)) = prompt.question.take() {
+                    self.save_question_text(id, qid, value);
+                    return Some(true);
+                }
+                if prompt.kind != "Find in conversation" {
+                    prompt.pending = Some((self.request + 1).to_string());
+                    let op = if prompt.kind == "Correct active turn" {
+                        "steer"
+                    } else if prompt.identity.is_some() {
+                        "queue_edit"
+                    } else {
+                        "rename"
+                    };
+                    self.send(json!({"op":op, "id":prompt.identity, "turn_id":prompt.identity, "text":value}));
+                    self.flow.prompt = Some(prompt);
+                } else {
+                    self.find_messages(&value);
+                }
+            }
+            _ => {
+                prompt.editor.input(key);
+            }
+        }
+        Some(true)
+    }
+
+    pub fn find_messages(&mut self, query: &str) {
+        if query.trim().is_empty() {
+            self.status = "Enter text to find; nothing sent".into();
+            return;
+        }
+        let needle = query.to_lowercase();
+        let mut choices = Vec::new();
+        let mut budget = 16 * 1024 * 1024usize;
+        let mut partial = false;
+        // Explicit search only, never per stream delta or frame. Recent results
+        // first; bound source work and matches and disclose a partial scan.
+        for item in self.items.iter().rev() {
+            if item.text.len() > budget || choices.len() >= 200 {
+                partial = true;
+                break;
+            }
+            budget -= item.text.len();
+            let lower = item.text.to_lowercase();
+            if let Some(at) = lower.find(&needle) {
+                // Byte offsets in case-folded text are not source offsets.
+                let offset = lower[..at].chars().count();
+                let snippet: String = item
+                    .text
+                    .chars()
+                    .skip(offset.saturating_sub(40))
+                    .take(180)
+                    .collect();
+                choices.push(choice(
+                    format!("{} · {}", item.kind, safe(&snippet).replace('\n', " ↵ ")),
+                    Action::Message(item.id.clone()),
+                    "",
+                ));
+            }
+        }
+        self.menu(format!("Conversation matches · {query}"), choices);
+        self.ui.menu.as_mut().unwrap().detail = if partial {
+            "Partial search: 200 matches / 16 MiB recent source limit. Narrow the query."
+        } else {
+            "Search finished locally. Select a message to read or copy it."
+        }
+        .into();
+    }
+
+    pub fn message_menu(&mut self, id: String) {
+        let Some(&index) = self.index.get(&id) else {
+            return;
+        };
+        let item = &self.items[index];
+        let detail = safe(&item.text.chars().take(12000).collect::<String>());
+        let reuse =
+            item.kind == "correction" && matches!(item.status.as_str(), "unconfirmed" | "pending");
+        let mut choices = vec![
+            choice("Go to this message", Action::Jump(id.clone()), ""),
+            choice(
+                "Copy message source / Markdown",
+                Action::CopyMessage(id.clone()),
+                "",
+            ),
+        ];
+        if reuse {
+            choices.push(choice(
+                "Reuse correction as an unsent draft — review first",
+                Action::CorrectionDraft(id),
+                "Original insertion/effects remain uncertain; never a retry or automatic send.",
+            ));
+        }
+        self.menu(
+            "Message · retained source preview (up to 12000 characters)",
+            choices,
+        );
+        self.ui.menu.as_mut().unwrap().detail = detail;
+    }
+
+    pub fn queue_menu(&mut self) {
+        let mut choices = vec![
+            choice("Queue current draft as a follow-up", Action::QueueDraft, ""),
+            choice(
+                "Run pending follow-ups (explicit release)",
+                Action::QueueControl("queue_run".into(), String::new()),
+                "",
+            ),
+            choice(
+                "Pause pending follow-ups (active work continues)",
+                Action::QueueControl("queue_pause".into(), String::new()),
+                "",
+            ),
+        ];
+        for row in &self.flow.rows {
+            let id = string(row, "id");
+            let body = safe(&string(row, "text"));
+            choices.push(choice(
+                format!(
+                    "{} · {}",
+                    string(row, "state"),
+                    body.chars()
+                        .take(100)
+                        .collect::<String>()
+                        .replace('\n', " ↵ ")
+                ),
+                Action::QueueItem(id),
+                body,
+            ));
+        }
+        self.menu(
+            format!(
+                "Pending follow-ups · {}",
+                if self.flow.paused {
+                    "paused"
+                } else {
+                    "enabled"
+                }
+            ),
+            choices,
+        );
+        self.ui.menu.as_mut().unwrap().detail = "Up to 20 messages. Successful turns advance an enabled queue. Stop, failure, opening and reopening pause it. Already admitted work cannot be removed here.".into();
+    }
+
+    pub fn queue_item(&mut self, id: String) {
+        let Some(row) = self.flow.rows.iter().find(|r| r["id"] == id) else {
+            self.status = "Follow-up already changed; no operation sent".into();
+            return;
+        };
+        let body = string(row, "text");
+        let media_detail = if row["image"].is_object() {
+            let images = row["image"]["images"]
+                .as_array()
+                .cloned()
+                .unwrap_or_else(|| vec![row["image"].clone()]);
+            format!(
+                "\n\nFrozen attachments travel with this queued message; editing text retains them.\n{}",
+                images
+                    .iter()
+                    .map(|image| format!(
+                        "{} · {} bytes\nSHA-256 {}",
+                        insights::attachment_location(image),
+                        image["bytes"],
+                        string(image, "sha256")
+                    ))
+                    .collect::<Vec<_>>()
+                    .join("\n")
+            )
+        } else {
+            String::new()
+        };
+        let mut choices = vec![choice(
+            "Copy follow-up text",
+            Action::CopyText(body.clone()),
+            "",
+        )];
+        if row["state"] == "dispatched" && !self.flow.busy {
+            choices.push(choice(
+                "Resolve uncertain delivery…",
+                Action::QueueResolve(id.clone()),
+                "No automatic retry or rollback; requires explicit acknowledgement.",
+            ));
+        }
+        if row["state"] == "dismissed" {
+            choices.push(choice(
+                "Remove dismissed record (does not undo effects)",
+                Action::QueueControl("queue_remove".into(), id.clone()),
+                "Text remains copyable until explicitly removed.",
+            ));
+        }
+        if row["state"] == "queued" {
+            choices.push(choice(
+                "Edit waiting follow-up (pauses the queue)",
+                Action::QueueEdit(id.clone()),
+                "",
+            ));
+            choices.push(choice(
+                "Remove waiting follow-up (does not stop active work)",
+                Action::QueueControl("queue_remove".into(), id),
+                "",
+            ));
+        }
+        self.menu("Follow-up · inspect before changing", choices);
+        self.ui.menu.as_mut().unwrap().detail = safe(&(body + &media_detail));
+    }
+
+    pub fn draw_prompt(&mut self, f: &mut Frame) {
+        let Some(prompt) = &mut self.flow.prompt else {
+            return;
+        };
+        let outer = f.area();
+        if outer.width < 12 || outer.height < 10 {
+            return;
+        }
+        let w = outer.width.saturating_sub(4).min(100);
+        let correction = prompt.kind == "Correct active turn";
+        let height = if correction { 7 } else { 5 };
+        let area = Rect::new(
+            (outer.width - w) / 2,
+            5.min(outer.height.saturating_sub(height)),
+            w,
+            height,
+        );
+        f.render_widget(Clear, area);
+        f.render_widget(
+            Block::bordered()
+                .title(format!(
+                    " {} · {} ",
+                    prompt.kind,
+                    if self.disconnected {
+                        "Uncertain · F2 copy text · Esc close · no retry"
+                    } else if prompt.pending.is_some() {
+                        "Saving…"
+                    } else if prompt.question.is_some() {
+                        "Enter review · Esc keep locally · F2 copy"
+                    } else {
+                        "Enter apply · Esc cancel"
+                    }
+                ))
+                .style(Style::default().fg(palette().green).bg(palette().panel)),
+            area,
+        );
+        f.render_widget(
+            &prompt.editor,
+            Rect::new(area.x + 1, area.y + 1, area.width - 2, 3),
+        );
+        if correction {
+            text(
+                f,
+                Rect::new(area.x + 1, area.y + 4, area.width - 2, 2),
+                if area.width < 60 {
+                    "Waits for tool return.\nStop requests cancellation."
+                } else {
+                    "Correction waits for the next input boundary.\nStop requests cancellation; nothing is undone."
+                },
+                palette().muted,
+            );
+        }
+    }
+}

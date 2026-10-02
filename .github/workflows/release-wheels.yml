@@ -1,0 +1,60 @@
+name: Qualify current AHP terminal client
+on:
+  workflow_dispatch:
+    inputs:
+      host_tarball_url:
+        description: HTTPS URL for independently built @amplifier/unified-host npm tarball
+        required: true
+      host_tarball_sha256:
+        description: Reviewed SHA256 of that host artifact
+        required: true
+permissions:
+  contents: read
+jobs:
+  wheel:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, ubuntu-24.04-arm, macos-14, macos-15-intel]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
+      HOST_TARBALL_URL: ${{ inputs.host_tarball_url }}
+      HOST_TARBALL_SHA256: ${{ inputs.host_tarball_sha256 }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@d0d8abe699bfb85fec6de9f7adb5ae17292296ff
+        with:
+          python-version: "3.13"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Select tested runtimes
+        run: |
+          rustup toolchain install 1.93.0 --profile minimal
+          rustup default 1.93.0
+          node -e "if(Number(process.versions.node.split('.')[0])<22)process.exit(1)"
+          uv sync --no-sources
+      - name: Fetch reviewed independent host artifact
+        run: |
+          mkdir -p .state
+          curl --fail --location --proto '=https' "$HOST_TARBALL_URL" -o .state/host.tgz
+          python -c "import hashlib,os,pathlib; assert hashlib.sha256(pathlib.Path('.state/host.tgz').read_bytes()).hexdigest()==os.environ['HOST_TARBALL_SHA256']"
+          npm install --prefix .state/host --ignore-scripts "$PWD/.state/host.tgz"
+      - name: Source, package, independent install and actual terminal gate
+        run: |
+          export AHP_HOST_ENTRY="$PWD/.state/host/node_modules/@amplifier/unified-host/dist/cli.js"
+          export AHP_HOST_MODULE="file://$PWD/.state/host/node_modules/@amplifier/unified-host/dist/index.js"
+          uv run --no-sync python scripts/qualify_current.py
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: amplifier-unified-client-tui-${{ matrix.os }}
+          path: |
+            dist/*.whl
+            .evidence/current
+          if-no-files-found: error
+          retention-days: 14
+# No automatic tag, publication, deployment or credentialed provider call.

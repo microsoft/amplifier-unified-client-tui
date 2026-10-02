@@ -1,0 +1,127 @@
+# Amplifier Unified Client TUI
+
+An independent native Ratatui client for an AHP 0.9 host. Multiple terminals and
+web clients follow the same host-owned ACP agent work while keeping separate drafts
+and navigation. Closing the terminal detaches; it does not cancel execution.
+
+The package and intended repository name are `amplifier-unified-client-tui`.
+This repository is a fresh connected-client export. The existing
+`microsoft/amplifier-app-tui` repository remains separate and unchanged.
+A local package is not evidence of publication or installation elsewhere.
+
+## Install and run
+
+Python 3.11+, Node 22+, macOS or Linux (Windows through WSL2) are required.
+The platform wheel contains the native renderer and bundled official AHP SDK.
+An installed wheel needs neither Cargo nor npm nor any Amplifier execution libraries.
+Source builds require Rust/Cargo and a C linker; regenerating the protocol bundle also requires npm.
+
+```sh
+uv tool install /path/to/amplifier_unified_client_tui-0.5.0rc1-PLATFORM.whl
+amplifier-unified-client-tui --server ws://127.0.0.1:8765/ahp
+amplifier-unified-client-tui --resume --workspace /workspace/on/the/host
+amplifier-unified-client-tui --session ahp-session:/SESSION_UUID
+```
+
+`amplifier-tui` remains a local convenience executable for the same client.
+`AMPLIFIER_UNIFIED_URL` selects a default host; `AMPLIFIER_TUI_NODE` can name an
+explicit Node executable. Remote connections require WSS with verified TLS.
+Use `--token-file /private/token` and optionally `--ca-file /private/ca.pem` for
+an authenticated host. Tokens are sent in Authorization, never URLs, saved drafts,
+conversation history or command-line values. There is no implicit lookup in an old
+application's home directory. Loopback may omit a token only if that host permits it.
+Client identity is presentation identity, not authentication.
+
+Each launch gets an independent client ID. `--client ID` restores that view's
+selection, drafts and uncertain input from `--state-dir`; concurrent processes
+cannot claim the same local identity. Private intent is partitioned by host URL.
+A cleared derived protocol cache can be fetched again; a deleted unsent private
+draft cannot be recovered from the host, which never received it.
+
+## Everyday use
+
+Enter sends, Alt+Enter adds a newline, and paste never submits. F4 opens Actions.
+`/resume` lists root conversations in pages; `/new` opens a local composer and
+creates host work only on explicit Send. Full AHP IDs or unique catalog-ID prefixes
+can select a conversation. `latest` searches the current workspace scope. Raw native
+engine IDs require the host's mapping and are not assumed to be AHP resource IDs.
+
+The first conversation view requests 50 turns. Older pages use standard fetchTurns;
+the renderer keeps every item in that requested window. Explicit backfill retains
+loaded observations until detach; this is not a native-context limit. Supported
+text, thinking, tools, errors, reported usage and resource references retain identity
+and ordering. Large tool details stay inspectable as structured source.
+
+Permission choices preserve the options supplied by the agent. Stop uses standard
+cancel; it does not promise force termination or undo. Rename changes the shared
+session title. Unsupported queue, steer, takeover, history editing and device actions
+refuse explicitly, without converting a command into a model prompt.
+
+Targeted agent UI tools inspect the actual renderer and use its current revision for
+draft replacement, selection and local panels. A local keystroke invalidates a stale
+edit before autosave. Device-effect receipts are durable before the action and never
+replay unknown effects. Inspection includes a private draft only when explicitly requested.
+Selection is an admitted asynchronous operation; losing its result remains unknown.
+
+The local intent journal is saved before sending. AHP echoes establish acceptance,
+not successful execution. `/deliveries` retains unknown outcomes; its recovery action
+reads host receipts and never repeats the prompt. A disconnected client reconnects
+with official replay/snapshot semantics. Missing local state starts from fresh
+snapshots. Catalog cursors are discarded after reconnection or invalidation.
+
+## Boundaries and capability inventory
+
+| Surface | Current mapping |
+| --- | --- |
+| Session list/create/select/rename | Standard AHP catalog, session resources and actions |
+| Text send/stream/errors/cancel | Standard chat actions; stable turn ID is durable intent identity |
+| Tools and approvals | Official reducer, ordered generic rendering, exact offered permission IDs |
+| History and reconnect | view.turns 50, fetchTurns, official replay/snapshot; no command replay |
+| Private drafts/navigation/editors | Client disk and Ratatui; zero backend edit traffic |
+| Usage and artifacts | Reported usage and generic resource references; rich viewers remain separate |
+| Native module/provider/mode configuration | Host capability owner; no private runtime import or guessed setting |
+| Queue, steer, force stop, takeover, fork/edit | Explicitly unavailable until negotiated and mapped |
+| Voice/camera/clipboard/canvas/publishing | No claim of connected device/rich-feature support; use an advertised capable client |
+| Agent access to terminal-local UI | Standard client-provided inspect/action tools; actual renderer revision checks protect unflushed keystrokes; no permanent draft mirror |
+| Standalone execution | Not part of this independent client |
+
+The connected wire is solely AHP. A bundled Node sidecar uses the unmodified official
+`@microsoft/agent-host-protocol` SDK and reducers; Python adapts identified presentation
+rows to Ratatui. Streaming crosses the local presentation boundary as changed rows,
+not a serialized historical transcript per token. Client protocol state is bounded by
+selected resources and requested windows; explicit full-history recovery follows
+upstream semantics and is not silently truncated.
+
+The helper bounds incoming/outgoing frames, pending commands and output backlog;
+exceeding a bound fails visibly and keeps delivery uncertainty. The current two-process
+presentation topology is a compatibility choice to retain official reducers and the
+native renderer. Tests do not establish comparative latency or process-memory gains.
+
+## Development and evidence
+
+```sh
+uv sync --inexact --no-sources
+npm ci --prefix ahp
+npm run build --prefix ahp
+cargo build --locked --release --manifest-path frontends/ratatui/Cargo.toml
+AHP_HOST_ENTRY=/independent/host/dist/cli.js uv run --no-sync pytest -q tests/test_ahp_client.py
+TUI_TEST_CANDIDATES=1 AHP_HOST_ENTRY=/independent/host/dist/cli.js uv run --no-sync pytest -q tests/test_ahp_terminal.py
+uv run --no-sync ruff check .
+uv run --no-sync python scripts/check_direction.py
+uv build --wheel
+```
+
+Use owned temporary homes and fixture agents. Ordinary AHP tests launch the public
+host executable. With `AHP_HOST_MODULE`, the client-tool composition fixture imports
+only the host package public API, never private sibling implementation modules. The actual terminal
+smoke runs at 120×40 and 40×20 with streaming, permission, private draft and terminal
+restoration. `TUI_CONNECTED_EXECUTABLE` repeats it against an installed wheel.
+See [acceptance](notes/ACCEPTANCE.md) and [verification guide](SMOKE_TESTS.md).
+
+This client contains no embedded execution harness, `standalone` extra,
+`--standalone` bypass, CLI passthrough or direct native session writer. The supported
+test manifest covers AHP behavior and retained native renderer interactions.
+See [the boundary inventory](notes/AHP-CUTOVER.md).
+Paid provider calls, Copilot/Codex/Claude accounts, production Spark performance and
+physical-device interaction are separate acceptance boundaries. No source or wheel
+check alone proves publication, installation elsewhere or real-account compatibility.

@@ -1,0 +1,271 @@
+"""Native structured reading; module-backed fixture and clearly labelled scene edge cases."""
+
+import base64
+import json
+import os
+import re
+import sys
+import time
+from pathlib import Path
+
+import pytest
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "scripts"))
+from interaction_probe import action, capture  # noqa: E402
+from reading_fixture import READING_REPLY  # noqa: E402
+from terminal_probe import Probe  # noqa: E402
+from test_reading_terminal import draft_is, scene  # noqa: E402
+
+pytestmark = pytest.mark.skipif(
+    os.environ.get("TUI_TEST_CANDIDATES") != "1", reason="Build Ratatui"
+)
+
+
+def copied(probe, count=1):
+    deadline = time.monotonic() + 4
+    while time.monotonic() < deadline:
+        copies = re.findall(rb"\x1b\]52;c;([^\x07]*)\x07", probe.raw)
+        if len(copies) >= count:
+            return base64.b64decode(copies[-1]).decode()
+        probe.read(0.02)
+    raise AssertionError("Missing a new clipboard observation")
+
+
+def code_colours(probe, needle):
+    probe.wait(needle)
+    row = next(i for i, line in enumerate(probe.screen.display) if needle in line)
+    start = probe.screen.display[row].index(needle)
+    return {probe.screen.buffer[row][x].fg for x in range(start, start + len(needle))}
+
+
+@pytest.mark.parametrize("width", [40, 80, 175])
+@pytest.mark.parametrize("no_colour", [False, True])
+def test_headings_are_typography_not_source_syntax(tmp_path, width, no_colour):
+    source = (
+        "# Title\n\n## Section\n\n### Subsection\n\n#### Topic\n\n"
+        "##### Detail\n\n###### Note\n\nSetext title\n===\n\nSetext section\n---\n\n"
+        "\\# Literal hash\n\n`## inline code`\n\nReading complete."
+    )
+    path = tmp_path / "headings.json"
+    path.write_text(
+        json.dumps(
+            {
+                "title": "Heading fixture",
+                "draft": "Unsent text",
+                "system": [],
+                "items": [{"id": "heading", "kind": "assistant", "text": source}],
+            }
+        )
+    )
+    probe = Probe(
+        [
+            str(ROOT / "frontends/ratatui/target/release/amplifier-ratatui"),
+            "--host-json",
+            json.dumps(
+                [sys.executable, "-m", "amplifier_tui.frontend_bridge", "--scene", str(path)]
+            ),
+        ],
+        cols=width,
+        rows=50,
+        env={"NO_COLOR": "1"} if no_colour else None,
+    )
+    try:
+        probe.wait("Reading complete.")
+        for title, modifiers in [
+            ("Title", (True, False, True)),
+            ("Section", (True, False, True)),
+            ("Subsection", (True, True, False)),
+            ("Topic", (False, False, True)),
+            ("Detail", (False, True, False)),
+            ("Note", (False, True, True)),
+            ("Setext title", (True, False, True)),
+            ("Setext section", (True, False, True)),
+        ]:
+            row = next(y for y, text in enumerate(probe.screen.display) if text.strip() == title)
+            assert probe.screen.display[row].startswith(title)  # No left gutter or hashes.
+            assert not probe.screen.display[row + 1].strip()
+            for x in range(len(title)):
+                cell = probe.screen.buffer[row][x]
+                assert (cell.bold, cell.italics, cell.underscore) == modifiers
+                assert cell.fg == ("default" if no_colour else "00d9f5")
+        assert "# Literal hash" in probe.text and "## inline code" in probe.text
+        capture(probe, f"headings-{width}-{'plain' if no_colour else 'colour'}")
+        action(probe, "Assistant replies", "Assistant replies · latest")
+        probe.send(b"\r")
+        probe.wait("Message · retained source preview")
+        probe.send(b"Copy message\r")
+        probe.wait("Source copied")
+        assert copied(probe) == source
+        draft_is(probe, "Unsent text")
+    finally:
+        probe.close()
+
+
+@pytest.mark.parametrize("width", [40, 80, 175])
+def test_mixed_markdown_retains_exact_copy_and_draft_at_terminal_widths(tmp_path, width):
+    path = tmp_path / "reading-scene.json"
+    path.write_text(
+        json.dumps(
+            {
+                "title": "Structured reading fixture",
+                "draft": "Keep this draft",
+                "items": [{"id": "reading", "kind": "assistant", "text": READING_REPLY}],
+                "system": [],
+            }
+        )
+    )
+    probe = Probe(
+        [
+            str(ROOT / "frontends/ratatui/target/release/amplifier-ratatui"),
+            "--host-json",
+            json.dumps(
+                [sys.executable, "-m", "amplifier_tui.frontend_bridge", "--scene", str(path)]
+            ),
+        ],
+        cols=width,
+        rows=50,
+    )
+    try:
+        probe.wait("Reading check complete.")
+        if width >= 80:
+            rows = probe.screen.display
+            continuation = next(row for row in rows if "A continuation paragraph" in row)
+            assert continuation.startswith("   A continuation paragraph")
+            heading = next(i for i, row in enumerate(rows) if row.strip() == "Sources")
+            assert not rows[heading - 1].strip()
+            assert all(probe.screen.buffer[heading][x].bold for x in range(len("Sources")))
+        assert "### Sources" not in probe.text
+        capture(probe, f"mixed-markdown-{width}")
+        action(probe, "Assistant replies", "Assistant replies · latest")
+        probe.send(b"\r")
+        probe.wait("Message · retained source preview")
+        probe.send(b"Copy message\r")
+        probe.wait("Source copied")
+        assert copied(probe) == READING_REPLY
+        draft_is(probe, "Keep this draft")
+    finally:
+        probe.close()
+
+
+@pytest.mark.parametrize("no_colour", [False, True])
+def test_syntax_colour_native_inspection_copy_and_plain_fallback(tmp_path, no_colour):
+    code = 'def greeting():\n    return "Hello, world"\n'
+    path = tmp_path / "syntax-scene.json"
+    path.write_text(
+        json.dumps(
+            {
+                "title": "Syntax colour fixture",
+                "draft": "Keep this draft",
+                "items": [
+                    {
+                        "id": "code",
+                        "kind": "assistant",
+                        "text": "```python\n"
+                        + code
+                        + "```\n\n```unknown-language\nplain = 'unchanged'\n```",
+                    }
+                ],
+                "system": [],
+            }
+        )
+    )
+    probe = Probe(
+        [
+            str(ROOT / "frontends/ratatui/target/release/amplifier-ratatui"),
+            "--host-json",
+            json.dumps(
+                [sys.executable, "-m", "amplifier_tui.frontend_bridge", "--scene", str(path)]
+            ),
+        ],
+        cols=80,
+        env={"NO_COLOR": "1"} if no_colour else None,
+    )
+    try:
+        probe.wait("Ready")
+        assert (len(code_colours(probe, 'return "Hello, world"')) > 1) == (not no_colour)
+        assert len(code_colours(probe, "plain = 'unchanged'")) == 1
+        capture(probe, "syntax-native-plain" if no_colour else "syntax-native-colour")
+        action(probe, "Code blocks", "Code blocks · inspect")
+        probe.send(b"python\r")
+        probe.wait("Code block · captured source")
+        assert (len(code_colours(probe, 'return "Hello, world"')) > 1) == (not no_colour)
+        capture(probe, "syntax-inspection-plain" if no_colour else "syntax-inspection-colour")
+        probe.resize(40, 40)
+        probe.wait("Hello, world")
+        probe.send(b"Copy code\r")
+        probe.wait("Source copied")
+        assert copied(probe) == code
+        draft_is(probe, "Keep this draft")
+    finally:
+        probe.close()
+
+
+
+
+def test_code_catalog_limits_and_oversized_copy_explanation(tmp_path):
+    source = (
+        "```text\n" + "x" * (1024 * 1024 + 1) + "\n```\n" + "```py\nprint('small')\n```\n" * 101
+    )
+    probe = scene(
+        tmp_path, [{"id": "bounded", "kind": "assistant", "text": source}], draft="Unsent scratch"
+    )
+    try:
+        probe.wait("Ready")
+        action(probe, "Code blocks", "Partial catalog")
+        probe.send(b"text\r")
+        probe.wait("Copy unavailable")
+        assert "Copy code content" not in probe.text
+        probe.send(b"\x1b")
+        draft_is(probe, "Unsent scratch")
+    finally:
+        probe.close()
+
+
+def test_open_code_snapshot_does_not_change_with_simulated_source_updates(tmp_path):
+    trigger = tmp_path / "update-source"
+    program = f"""
+import json, pathlib, select, sys
+def emit(**value):
+    print(json.dumps(dict(version=1, **value)), flush=True)
+emit(type="snapshot", session_id="simulated", mode="SIMULATED", draft="Main scratch", items=[dict(id="source",kind="assistant",text="```py\\nprint('before')\\n```")], system=[])
+emit(type="state", status="Ready")
+updated = False
+while True:
+    if pathlib.Path({str(trigger)!r}).exists() and not updated:
+        updated = True
+        emit(type="item",id="source",kind="assistant",text="```py\\nprint('after')\\n```")
+        emit(type="error",message="Simulated source update received")
+    ready, _, _ = select.select([sys.stdin], [], [], 0.01)
+    if ready:
+        line = sys.stdin.readline()
+        if not line or json.loads(line).get("op") == "shutdown": break
+"""
+    probe = Probe(
+        [
+            str(ROOT / "frontends/ratatui/target/release/amplifier-ratatui"),
+            "--host-json",
+            json.dumps([sys.executable, "-u", "-c", program]),
+        ]
+    )
+    try:
+        probe.wait("Ready")
+        action(probe, "Code blocks", "Code blocks · inspect")
+        probe.send(b"\r")
+        probe.wait("Code block · captured source")
+        trigger.write_text("update")
+        probe.wait("Simulated source update received")
+        probe.send(b"Copy code\r")
+        probe.wait("Source copied")
+        assert copied(probe) == "print('before')\n"
+        action(probe, "Code blocks", "Code blocks · inspect")
+        probe.send(b"\r")
+        probe.wait("Code block · captured source")
+        probe.send(b"Copy code\r")
+        probe.wait("Source copied")
+        assert copied(probe, count=2) == "print('after')\n"
+        draft_is(probe, "Main scratch")
+    finally:
+        probe.close()
+
+

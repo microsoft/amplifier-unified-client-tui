@@ -1,0 +1,23 @@
+[package]
+name = "amplifier-ratatui"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+ratatui = "=0.30.2"
+crossterm = "=0.29.0"
+ratatui-textarea = "=0.9.2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+unicode-width = "0.2"
+signal-hook = "0.3"
+base64 = "0.22"
+pulldown-cmark = "=0.13.0"
+unicode-segmentation = "1"
+syntect = { version = "=5.3.0", default-features = false, features = ["default-syntaxes", "default-themes", "regex-fancy"] }
+libc = "0.2"
+
+[patch.crates-io]
+# Codex's pinned input-replay seam: retain bytes read during bounded terminal probes.
+crossterm = { git = "https://github.com/openai-oss-forks/crossterm", rev = "45fecb9508105988f42fe6ff0441783ed3717f92" }
