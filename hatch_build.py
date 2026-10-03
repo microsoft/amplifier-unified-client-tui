@@ -37,10 +37,23 @@ class NativeBuild(BuildHookInterface):
         root = Path(self.root)
         if not (root / "src/amplifier_tui/_ahp/bridge.mjs").is_file():
             raise RuntimeError("Build the bundled official AHP helper with npm run build --prefix ahp first")
-        target = root / ".state/wheel-target"
+        rustc = shutil.which("rustc")
+        compiler = subprocess.check_output([rustc, "-vV"], text=True)
+        triple = next(line.removeprefix("host: ") for line in compiler.splitlines() if line.startswith("host: "))
+        deployment = ""
+        if sys.platform == "darwin":
+            # Use the compiler's deployment floor (including an explicit caller
+            # override), not the build machine's OS release. That environment
+            # also controls host proc-macro dylibs loaded during compilation.
+            deployment = subprocess.check_output(
+                [rustc, "--print", "deployment-target", "--target", triple], text=True
+            ).strip().removeprefix("MACOSX_DEPLOYMENT_TARGET=")
         wheel_platform, target_env = wheel_target(
-            sys.platform, platform.machine(), platform.mac_ver()[0]
+            sys.platform, platform.machine(), deployment
         )
+        # Cargo does not reliably invalidate host proc macros when only the
+        # deployment environment changes; isolate those loader artifacts.
+        target = root / ".state/wheel-target" / (triple + "-" + (deployment or "default"))
         if os.environ.get("CARGO_BUILD_TARGET"):
             raise RuntimeError("Cross-compilation is not supported by this wheel build hook")
         encoded = os.environ.get("CARGO_ENCODED_RUSTFLAGS")
@@ -51,9 +64,6 @@ class NativeBuild(BuildHookInterface):
             (root, "/source"),
         ):
             flags.append(f"--remap-path-prefix={source.resolve()}={replacement}")
-        rustc = shutil.which("rustc")
-        compiler = subprocess.check_output([rustc, "-vV"], text=True)
-        triple = next(line.removeprefix("host: ") for line in compiler.splitlines() if line.startswith("host: "))
         subprocess.run(
             [
                 cargo,

@@ -13,3 +13,5 @@ Desired behavior is distinct from current [acceptance](ACCEPTANCE.md).
 | FLAGS-01 | composition.v1:1, session.v1:6 | F21.04 configured managed launch choices | Passive options resolve exact bundle revision; first installed native model audit matches explicit selection; resumed/unsupported overrides refuse | Implemented; acceptance tracked in CONNECTED-PARITY |
 | REVIEW-01 | continuity.v1:2, presentation.v1:7 | Recovery and managed allocation reviews | Exact source/revision confirmation, durable original receipt, stale target refuses, source history preserved | Implemented; acceptance tracked in CONNECTED-PARITY |
 | CATALOG-01 | composition.v1:1, interaction.v1:1 | Negotiated workspace/root-session discovery | 50-row host-filtered pages; cursor binds query/workspace/connection; no dormant runtime | Implemented; acceptance tracked in CONNECTED-PARITY |
+
+| WHEEL-01 | composition.v1:1, ecosystem.v1:6 | Reproducible native wheel build and installed client | Compiler deployment floor and isolated host proc-macro artifacts; installed helper/native isolation and actual connected PTYs | Implemented; causal evidence in WHEEL-BUILD |
