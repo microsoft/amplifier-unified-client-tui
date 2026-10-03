@@ -37,7 +37,8 @@ def action(probe, query, expected):
 
 
 def test_actions_cancel_preserves_selection_and_paste_is_local():
-    probe = Probe([sys.executable, str(ROOT / "scripts/compare.py"), "ratatui"])
+    probe = Probe([str(ROOT / "frontends/ratatui/target/release/amplifier-ratatui"),
+                   "--host-json", json.dumps([sys.executable, "-m", "amplifier_tui.frontend_bridge", "--scene", str(ROOT / "scenes/retry.json")])])
     try:
         probe.wait("Waiting for your decision")
         probe.send(b"\x1b[1;2D")  # select final draft character
@@ -74,7 +75,8 @@ def test_actions_cancel_preserves_selection_and_paste_is_local():
 
 
 def test_menu_resize_keeps_draft_and_keyboard_access():
-    probe = Probe([sys.executable, str(ROOT / "scripts/compare.py"), "ratatui"], cols=160)
+    probe = Probe([str(ROOT / "frontends/ratatui/target/release/amplifier-ratatui"),
+                   "--host-json", json.dumps([sys.executable, "-m", "amplifier_tui.frontend_bridge", "--scene", str(ROOT / "scenes/retry.json")])], cols=160)
     try:
         probe.wait("Waiting for your decision")
         click(probe, "[ Actions ]")

@@ -6518,7 +6518,7 @@ async function connect(recover = false) {
     output({ event: "connection", online: true, generation, initialized });
     output({ event: "catalogInvalidated" });
     if (selected) {
-      await registerTools();
+      await optionalTools();
       publish(chatURI);
     }
     void (async () => {
@@ -6575,6 +6575,13 @@ async function dispatch(channel, action) {
     waiting.set(handle.clientSeq, { resolve, reject, timer });
   });
 }
+async function optionalTools() {
+  try {
+    await registerTools();
+  } catch {
+    output({ event: "optionalUnavailable", capability: "client-tools", message: "Terminal agent UI registration unavailable; core conversation retained" });
+  }
+}
 async function registerTools() {
   const suffix = createHash("sha256").update(config.clientId).digest("hex").slice(0, 16);
   await dispatch(selected, { type: "session/activeClientSet", activeClient: { clientId: config.clientId, displayName: "Amplifier Unified TUI", tools: [
@@ -6618,7 +6625,7 @@ async function command(method, p) {
       states.delete(uri);
       cuts.delete(uri);
     }
-    await registerTools();
+    await optionalTools();
     publish(chatURI);
     return { session: selected, chat: chatURI };
   }
@@ -6630,6 +6637,22 @@ async function command(method, p) {
     }
     selected = chatURI = void 0;
     return {};
+  }
+  if (method === "capability") {
+    const manifest = initialized?._meta?.["amplifier.dev/capabilities"];
+    const action = manifest?.version === 1 ? manifest.actions?.[p.action] : void 0;
+    if (!action || action.method !== "x-amplifier/capabilityAction" || manifest.topics?.[action.topic]?.version !== 1) throw Object.assign(new Error("Capability action unavailable"), { rejected: true });
+    return client.request(action.method, { channel: p.channel ?? ROOT, topic: action.topic, operation: action.operation, version: 1, args: p.args ?? {}, commandId: p.commandId });
+  }
+  if (method === "managed") {
+    const cap = initialized?._meta?.["amplifier.dev/managedCreation"];
+    if (cap?.version !== 1 || cap.method !== "x-amplifier/managedSession" || !cap.operations?.includes(p.operation)) throw Object.assign(new Error("Managed creation capability unavailable"), { rejected: true });
+    return client.request(cap.method, { channel: ROOT, operation: p.operation, args: p.args });
+  }
+  if (method === "lifecycle") {
+    const cap = initialized?._meta?.["amplifier.dev/sessionLifecycle"];
+    if (cap?.version !== 1 || cap.method !== "x-amplifier/sessionLifecycle" || cap.deletion !== "preserve-history") throw Object.assign(new Error("Preserve-history lifecycle capability unavailable"), { rejected: true });
+    return client.request(cap.method, { channel: p.session, operation: p.operation, args: p.args ?? {} });
   }
   if (method === "create") {
     const provider = p.provider ?? states.get(ROOT)?.agents?.[0]?.provider;

@@ -147,8 +147,9 @@ impl App {
                 return;
             };
             let query = menu.query.clone();
+            let page_size = value["page_size"].as_u64().unwrap_or(100).max(1) as usize;
             let mut choices = vec![Choice {
-                label: "New conversation — same bundle and directory".into(),
+                label: "New conversation — explicit launch choices or host defaults".into(),
                 action: Action::Switch("new".into()),
                 detail: String::new(),
             }];
@@ -161,7 +162,7 @@ impl App {
             if offset > 0 {
                 choices.push(Choice {
                     label: "Previous page of conversations".into(),
-                    action: Action::ConversationPage(offset.saturating_sub(100), search.clone()),
+                    action: Action::ConversationPage(offset.saturating_sub(page_size), search.clone()),
                     detail: String::new(),
                 });
             }
@@ -194,7 +195,7 @@ impl App {
             menu.query = query;
             menu.detail = format!(
                 "Page {} · Content search: {} · Partial source scan: {}\n{}\nOpening saves this draft. Uncertain/incompatible targets require recovery or refuse execution.",
-                offset / 100 + 1,
+                offset / page_size + 1,
                 safe(&search),
                 value["partial"] == true,
                 safe(&string(value, "scope"))

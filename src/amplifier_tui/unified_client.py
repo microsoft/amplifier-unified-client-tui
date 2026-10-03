@@ -12,11 +12,15 @@ from .unified_transport import Rejected
 class UnifiedBridge:
     async_stop = True
 
-    def __init__(self, emit, transport, state, *, session=None, workspace=None, resume_picker=False):
+    def __init__(self, emit, transport, state, *, session=None, workspace=None, resume_picker=False, creation=None):
         self.emit, self.transport, self.store = emit, transport, state
         self.selected = None if resume_picker else session or state.data.get('session')
         self.resume_picker = resume_picker
         self.workspace = workspace
+        self.creation = creation or {}
+        self.creation_args = {}
+        self.reviews = {}
+        self.workspace_choices = {}
         self.session = {}
         self.actions = set()
         self.pump = None
@@ -91,6 +95,8 @@ class UnifiedBridge:
     async def open(self):
         await self.transport.open()
         self.actions = await self.transport.actions()
+        if self.creation:
+            self.creation_args = await self.transport.prepare_creation(self.creation)
         self.online = True
         if self.selected:
             await self.select(self.selected)
@@ -109,13 +115,14 @@ class UnifiedBridge:
                   system=['Connected to ' + self.transport.url,
                           'Exit detaches; work continues on Unified.',
                           'Recover this view with --client ' + self.store.identity,
-                          'Unavailable host capabilities are shown explicitly.'])
+                          'Unavailable host capabilities are shown explicitly.',
+                          *self.transport.optional_unavailable.values()])
         self.resume_picker = False
         self.send('system', lines=['Host: ' + self.transport.url,
                   'Client: ' + self.store.identity,
                   'Stop uses Unified cancellation; graceful/force stages are not negotiated.',
                   'Use /deliveries to inspect uncertain input. Rich artifacts open in the web client.'],
-                  commands=['/new', '/resume', '/rename', '/stop', '/deliveries'], steer=False)
+                  commands=['/new', '/resume', '/rename', '/stop', '/deliveries', '/details', '/recovery', '/managed-files', '/effects', '/workspaces'], steer=False)
         # The connected protocol does not negotiate standalone mode controls.
         self.send('mode_status', supported=False)
         self.publish()
@@ -194,6 +201,7 @@ class UnifiedBridge:
         for message in session.get('messages', []):
             identity = message.get('inputId')
             if identity in self.store.data['outbox'] and message.get('delivery', {}).get('status') == 'accepted':
+                self.store.journal(identity, {**self.store.data['outbox'][identity], 'status': 'accepted'})
                 del self.store.data['outbox'][identity]
                 changed = True
         if changed:
@@ -238,6 +246,66 @@ class UnifiedBridge:
         except (Rejected, ValueError, OSError):
             pass  # Preparation is advisory; ordinary send/ownership status remains authoritative.
 
+    async def host_review(self, purpose, target):
+        if not target:
+            return False, 'Select a conversation first'
+        if purpose == 'managed-files':
+            review = await self.transport.lifecycle(target, 'managedFiles.preview', {'protectSessionIds': []})
+            if review.get('session') != target or review.get('preservesCanonical') is not True:
+                raise ValueError('Managed review identity or preservation proof differs')
+            operation = 'managedFiles.dispose'
+            args = {key: review[key] for key in ('reviewId', 'reviewHash')}
+            args.update(expectedHistoryRevision=review['historyRevision'], protectSessionIds=[])
+            label = 'Dispose reviewed owned files — preserve canonical history'
+        else:
+            review = await self.transport.lifecycle(target, 'inspect')
+            if review.get('session') != target:
+                raise ValueError('Native inspection belongs to another conversation')
+            if purpose == 'details':
+                self.send('host_review', purpose=purpose, detail=json.dumps(review, indent=2), label='')
+                return True, 'Selected native details; no model work started'
+            capability = review.get('lifecycleCapabilities', {}).get('recoveryCopy', {})
+            if capability.get('version') != 1:
+                return False, 'Recovery copy is unavailable for the selected agent; original retained'
+            operation = 'fork'
+            args = {'expectedHistoryRevision': review['historyRevision'], 'mode': 'recovery'}
+            label = 'Create independent recovery copy — never replay old work'
+        token = str(uuid.uuid4())
+        self.reviews = {token: {'session': target, 'operation': operation, 'args': args}}
+        self.send('host_review', purpose=purpose, token=token, target=target, label=label,
+                  detail=json.dumps(review, indent=2))
+        return True, 'Review exact source and limits; Escape preserves the draft'
+
+    async def apply_host_review(self, request, target):
+        review = self.reviews.pop(request.get('token'), None)
+        if not review or review['session'] != target or request.get('target') != target:
+            return False, 'Review expired or selection changed; nothing executed'
+        if len(self.store.data.get('hostEffects', {})) >= 512:
+            return False, 'Local host-effect receipt capacity reached; existing evidence retained'
+        command_id = str(uuid.uuid4())
+        args = {**review['args'], 'commandId': command_id}
+        effects = self.store.data.setdefault('hostEffects', {})
+        row = {'session': target, 'operation': review['operation'], 'args': args, 'status': 'unknown'}
+        effects[command_id] = row
+        self.store.journal(command_id, row)
+        self.store.save()  # Original request survives lost replies; never replayed.
+        try:
+            result = await self.transport.lifecycle(target, review['operation'], args)
+            if row['operation'] == 'fork' and (result.get('creationConfirmed') is not True
+                    or result.get('preservedSource') is not True or result.get('workReplayed') is not False
+                    or not isinstance(result.get('uri'), str) or result.get('receipt', {}).get('commandId') != command_id):
+                raise ValueError('Recovery result lacks exact preservation and command proof')
+            row.update(status=result.get('status', 'reported'), result=result)
+            self.store.journal(command_id, row)
+            self.store.save()
+            self.send('host_review', purpose='result', detail=json.dumps(result, indent=2), label='',
+                      open_target=result.get('uri') if row['operation'] == 'fork' else None)
+            return result.get('status') != 'unknown', 'Host returned the reviewed operation; /effects inspects its original receipt'
+        except (OSError, ValueError, TimeoutError) as exc:
+            row['error'] = str(exc)
+            self.store.save()
+            return False, 'Outcome unconfirmed; /effects inspects the original receipt without replay'
+
     async def dispatch(self, request):
         op = request.get('op')
         if op == 'client_ui_reply':
@@ -251,6 +319,31 @@ class UnifiedBridge:
         if op in {'draft', 'editor_draft'}:
             self.store.draft(target, request.get('text', ''))
             return True, 'Draft saved locally'
+        if op in {'host_review', 'host_apply', 'host_effects', 'host_receipt'}:
+            if not self.online:
+                return False, 'Disconnected; optional read unavailable; draft and original receipts retained'
+            try:
+                if op == 'host_review':
+                    if request.get('purpose') not in {'details', 'recovery', 'managed-files'}:
+                        return False, 'Unknown review action'
+                    return await self.host_review(request['purpose'], target)
+                if op == 'host_apply':
+                    return await self.apply_host_review(request, target)
+                effects = self.store.data.get('hostEffects', {})
+                if op == 'host_effects':
+                    self.send('host_effects', entries=[{'id': key, **row} for key, row in effects.items()
+                                                      if row['session'] == target])
+                    return True, 'Original host effect receipts; nothing resubmitted'
+                row = effects.get(request.get('id'))
+                if not row or row['session'] != target:
+                    return False, 'Receipt target differs'
+                operation = 'managedFiles.receipt' if row['operation'] == 'managedFiles.dispose' else 'receipt'
+                result = await self.transport.lifecycle(target, operation, {'commandId': request['id']})
+                self.send('host_review', purpose='receipt', detail=json.dumps(result, indent=2), label='',
+                          open_target=(result or {}).get('result', {}).get('uri') if row['operation'] == 'fork' else None)
+                return True, 'Original receipt inspected; no mutation replay'
+            except (OSError, ValueError, TimeoutError, KeyError) as exc:
+                return False, 'Optional capability unavailable: ' + str(exc) + '; core conversation retained'
         if op == 'deliveries':
             self.send('deliveries', entries=[{'id': key, **row} for key, row in self.store.data['outbox'].items()
                                              if row.get('session') == target])
@@ -267,18 +360,35 @@ class UnifiedBridge:
             return True, 'Unsent text copied to composer; nothing submitted'
         if not self.online:
             return False, 'Disconnected; draft retained. Wait for reconnect before sending'
+        if op == 'workspaces':
+            page = await self.transport.workspaces(offset=request.get('offset', 0), query=request.get('query', ''))
+            self.workspace_choices = {row['id']: row for row in page['items']}
+            self.send('workspaces', items=page['items'], next_offset=page.get('nextOffset'),
+                      query=request.get('query', ''), coverage=page.get('coverage'))
+            return True, 'Bounded existing-workspace page; no agent started'
+        if op == 'workspace_select':
+            workspace = self.workspace_choices.get(request.get('id'))
+            if not workspace or not workspace.get('available') or workspace.get('path') != request.get('path'):
+                return False, 'Workspace choice changed or unavailable; reopen Workspaces'
+            self.store.draft(target, request.get('draft', ''))
+            self.workspace = workspace['path']
+            self.store.data['workspace'] = self.workspace
+            result = await self.dispatch({**request, 'op': 'switch', 'target': 'new'})
+            return result
         if op == 'conversations':
-            page = await self.transport.sessions(offset=request.get('offset', 0), workspace=self.workspace)
+            page = await self.transport.sessions(offset=request.get('offset', 0), workspace=self.workspace,
+                                                 query=request.get('query', ''))
             query = request.get('query', '').casefold()
             rows = [{'id': row['id'], 'title': row.get('title', 'Untitled'), 'cwd': row.get('workspace', ''),
                      'status': row.get('status', '')} for row in page['items']
-                    if not query or query in ' '.join(str(row.get(key) or '') for key in
+                    if page.get('scopedSearch') or not query or query in ' '.join(str(row.get(key) or '') for key in
                         ('title', 'id', 'nativeIdentity', 'runtimeSessionId')).casefold()]
             self.send('conversations', request_id=request['request_id'], sessions=rows,
-                      offset=request.get('offset', 0), next_offset=page.get('nextOffset'),
+                      offset=request.get('offset', 0), page_size=50, next_offset=page.get('nextOffset'),
                       truncated=page.get('nextOffset') is not None, query=request.get('query', ''),
-                      partial=bool(query and page.get('nextOffset')),
-                      scope='Unified host conversations · title/ID search on this page; host paths')
+                      partial=bool(query and page.get('nextOffset') and not page.get('scopedSearch')),
+                      scope=('Host-filtered root sessions · existing selected workspace' if page.get('scopedSearch')
+                             else 'Standard host catalog · local workspace/title/ID filter on this page; child status unverified'))
             return True, 'Conversations loaded'
         if op == 'switch':
             async with self.switch_lock:
@@ -364,6 +474,8 @@ class UnifiedBridge:
                     return False, 'Write a message first'
                 if request.get('image_id'):
                     return False, 'Connected image upload is not available; use the web client'
+                if len(self.store.data['outbox']) >= 512:
+                    return False, 'Local delivery capacity reached; all original intents retained'
                 identity = str(uuid.uuid4())
                 row = {'session': target, 'action': action, 'args': args, 'status': 'sending',
                        'local_request': request['request_id'], 'generation': self.generation}
@@ -371,6 +483,7 @@ class UnifiedBridge:
                     if op != 'submit':
                         return False, 'Select a conversation first'
                     row['create_id'] = str(uuid.uuid4())
+                    row['creation'] = {'workspace': self.workspace, **self.creation_args}
                 self.store.data['outbox'][identity] = row
             if op == 'retry_delivery':
                 await self.refresh_delivery(row)
@@ -380,11 +493,16 @@ class UnifiedBridge:
                     except (OSError, ValueError, TimeoutError) as exc:
                         return False, 'Receipt unavailable: ' + str(exc) + '; nothing resubmitted'
                     return False, 'Receipt: ' + str(receipt) + '; nothing resubmitted'
-                return False, 'Creation outcome unknown; inspect the host catalog; nothing resubmitted'
+                try:
+                    receipt = await self.transport.creation_receipt(row['create_id'], row.get('creation', {}).get('managed', False))
+                    return False, 'Creation receipt: ' + str(receipt) + '; original input remains unsent'
+                except (OSError, ValueError, TimeoutError) as exc:
+                    return False, 'Creation receipt unavailable: ' + str(exc) + '; nothing resubmitted'
             return await self.deliver(identity, row)
 
     async def deliver(self, identity, row):
         row['status'] = 'sending'
+        self.store.journal(identity, row)
         self.store.save()  # Durable intent before the first request, including session creation.
         self.publish()
         if row['action'] == 'conversation.send' and row.get('generation') == self.generation:
@@ -395,7 +513,7 @@ class UnifiedBridge:
         try:
             if row['session'] is None:
                 created = await self.transport.command(None, 'session.create',
-                    {'workspace': self.workspace} if self.workspace else {}, row['create_id'])
+                    row.get('creation', {'workspace': self.workspace}), row['create_id'])
                 state = created.get('state', {})
                 new_id = created.get('result', {}).get('sessionId') or state.get('selectedSessionId')
                 if not new_id:
@@ -416,6 +534,7 @@ class UnifiedBridge:
                 else:
                     row.pop('error', None)
                 if row['action'] != 'conversation.send':
+                    self.store.journal(identity, row)
                     del self.store.data['outbox'][identity]
                 self.store.save()
             if result.get('session', {}).get('id') == self.selected:

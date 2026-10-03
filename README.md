@@ -17,7 +17,7 @@ An installed wheel needs neither Cargo nor npm nor any Amplifier execution libra
 Source builds require Rust/Cargo and a C linker; regenerating the protocol bundle also requires npm.
 
 ```sh
-uv tool install /path/to/amplifier_unified_client_tui-0.5.0rc1-PLATFORM.whl
+uv tool install /path/to/amplifier_unified_client_tui-0.5.0rc2-PLATFORM.whl
 amplifier-unified-client-tui --server ws://127.0.0.1:8765/ahp
 amplifier-unified-client-tui --resume --workspace /workspace/on/the/host
 amplifier-unified-client-tui --session ahp-session:/SESSION_UUID
@@ -38,6 +38,22 @@ cannot claim the same local identity. Private intent is partitioned by host URL.
 A cleared derived protocol cache can be fetched again; a deleted unsent private
 draft cannot be recovered from the host, which never received it.
 
+New managed conversations may use exact host-configured launch choices:
+
+```sh
+amplifier-unified-client-tui --new --managed --agent amplifier \
+  --bundle approved --provider configured-instance --model exact-model
+```
+
+`--agent` selects an advertised ACP implementation; `--provider` is its native
+provider instance. Bundle aliases resolve through passive managed options to an
+exact revision; model/provider choices are paired and validated by the native owner.
+`--effort` requires that pair. Initialization discovers choices without allocating
+or starting a runtime. Allocation and the first input happen only on explicit Send;
+original creation identity and choices persist before dispatch. Absent negotiation,
+unknown bundle/provider and unsupported resumed/existing-workspace overrides refuse.
+A managed conversation uses a fresh host-owned workspace, not `--workspace`.
+
 ## Everyday use
 
 Enter sends, Alt+Enter adds a newline, and paste never submits. F4 opens Actions.
@@ -56,6 +72,17 @@ Permission choices preserve the options supplied by the agent. Stop uses standar
 cancel; it does not promise force termination or undo. Rename changes the shared
 session title. Unsupported queue, steer, takeover, history editing and device actions
 refuse explicitly, without converting a command into a model prompt.
+
+`/workspaces` pages existing host-authorized directories. Choosing one changes only
+this client and opens an unsent composer; `/resume` uses server-filtered root sessions
+when workspace.sessions is advertised. Standard-only hosts retain 50-row catalog
+paging with visibly local per-page filters and unverified child semantics.
+`/details` inspects the selected native identity and failure information. `/recovery`
+reviews a cold independent recovery copy; confirmation binds the inspected history
+revision and never submits the retained draft. `/managed-files` reviews only a proved
+managed allocation; disposal requires an explicit confirmation and host-owned
+dependent-owner/family protection. `/effects` reads original operation receipts.
+Unknown operations never replay. Escape dismisses a review and retains the composer.
 
 Targeted agent UI tools inspect the actual renderer and use its current revision for
 draft replacement, selection and local panels. A local keystroke invalidates a stale
@@ -80,7 +107,9 @@ snapshots. Catalog cursors are discarded after reconnection or invalidation.
 | Private drafts/navigation/editors | Client disk and Ratatui; zero backend edit traffic |
 | Usage and artifacts | Reported usage and generic resource references; rich viewers remain separate |
 | Native module/provider/mode configuration | Host capability owner; no private runtime import or guessed setting |
-| Queue, steer, force stop, takeover, fork/edit | Explicitly unavailable until negotiated and mapped |
+| Independent recovery copy / managed-file review | Negotiated preserve-history lifecycle; passive review, explicit exact-revision confirmation, original effect receipts |
+| Workspace discovery / scoped root sessions | Negotiated workspace.list/workspace.sessions; 50-row opaque cursor pages; local private selection |
+| Queue, steer, force stop, takeover, history editing | Explicitly unavailable until negotiated and mapped |
 | Voice/camera/clipboard/canvas/publishing | No claim of connected device/rich-feature support; use an advertised capable client |
 | Agent access to terminal-local UI | Standard client-provided inspect/action tools; actual renderer revision checks protect unflushed keystrokes; no permanent draft mirror |
 | Standalone execution | Not part of this independent client |
@@ -125,3 +154,6 @@ See [the boundary inventory](notes/AHP-CUTOVER.md).
 Paid provider calls, Copilot/Codex/Claude accounts, production Spark performance and
 physical-device interaction are separate acceptance boundaries. No source or wheel
 check alone proves publication, installation elsewhere or real-account compatibility.
+
+The [repo-local parity inventory](notes/CONNECTED-PARITY.md) records contract mapping,
+installed-peer evidence and remaining acceptance boundaries.

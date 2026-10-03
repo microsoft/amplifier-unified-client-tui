@@ -56,7 +56,7 @@ async function connect(recover=false){
       sequence=initialized.serverSeq;
     }
     ready=true;for(const item of gate)consume(item);gate=[];online=true;
-    output({event:'connection',online:true,generation,initialized});output({event:'catalogInvalidated'});if(selected){await registerTools();publish(chatURI);}
+    output({event:'connection',online:true,generation,initialized});output({event:'catalogInvalidated'});if(selected){await optionalTools();publish(chatURI);}
     // Every reconnect clears protocol pending writes. Durable input is reconciled separately.
     void(async()=>{for await(const state of client.stateChanges()){if(state.status==='closed'&&current===generation&&!closing){online=false;output({event:'connection',online:false,generation});for(const pending of waiting.values()){clearTimeout(pending.timer);pending.reject(new Error('Disconnected; command outcome unknown'));}waiting.clear();setTimeout(()=>retry(),250);}}})();
     return initialized;
@@ -67,6 +67,7 @@ let retryDelay=250;
 async function retry(){if(closing)return;try{await connect(true);retryDelay=250;}catch{output({event:'connection',online:false,generation});retryDelay=Math.min(retryDelay*2,5000);setTimeout(()=>retry(),retryDelay);}}
 async function subscribe(uri,view){const result=await client.subscribe(uri,{view,delivery:{maxBatchDelayMs:30}});if(!result.result.snapshot)throw new Error('Host omitted required snapshot');baseline(result.result.snapshot);}
 async function dispatch(channel,action){if(!online)throw new Error('Offline; nothing automatically retried');const handle=client.dispatch(channel,action);return new Promise((resolve,reject)=>{const timer=setTimeout(()=>{waiting.delete(handle.clientSeq);reject(new Error('Action echo unavailable; outcome unknown'));},15000);waiting.set(handle.clientSeq,{resolve,reject,timer});});}
+async function optionalTools(){try{await registerTools();}catch{output({event:'optionalUnavailable',capability:'client-tools',message:'Terminal agent UI registration unavailable; core conversation retained'});}}
 async function registerTools(){
   const suffix=createHash('sha256').update(config.clientId).digest('hex').slice(0,16);
   await dispatch(selected,{type:'session/activeClientSet',activeClient:{clientId:config.clientId,displayName:'Amplifier Unified TUI',tools:[
@@ -87,9 +88,25 @@ async function command(method,p){
     try{await subscribe(nextChat,{turns:50});}catch(error){await client.unsubscribe(p.session);states.delete(p.session);throw error;}
     selected=p.session;chatURI=nextChat;
     for(const uri of [prior,priorChat])if(uri&&uri!==selected&&uri!==chatURI){await client.unsubscribe(uri);states.delete(uri);cuts.delete(uri);}
-    await registerTools();publish(chatURI);return {session:selected,chat:chatURI};
+    await optionalTools();publish(chatURI);return {session:selected,chat:chatURI};
   }
   if(method==='detach'){for(const uri of [selected,chatURI])if(uri){await client.unsubscribe(uri);states.delete(uri);cuts.delete(uri);}selected=chatURI=undefined;return {};}
+  if(method==='capability'){
+    const manifest=initialized?._meta?.['amplifier.dev/capabilities'];
+    const action=manifest?.version===1?manifest.actions?.[p.action]:undefined;
+    if(!action||action.method!=='x-amplifier/capabilityAction'||manifest.topics?.[action.topic]?.version!==1)throw Object.assign(new Error('Capability action unavailable'),{rejected:true});
+    return client.request(action.method,{channel:p.channel??ROOT,topic:action.topic,operation:action.operation,version:1,args:p.args??{},commandId:p.commandId});
+  }
+  if(method==='managed'){
+    const cap=initialized?._meta?.['amplifier.dev/managedCreation'];
+    if(cap?.version!==1||cap.method!=='x-amplifier/managedSession'||!cap.operations?.includes(p.operation))throw Object.assign(new Error('Managed creation capability unavailable'),{rejected:true});
+    return client.request(cap.method,{channel:ROOT,operation:p.operation,args:p.args});
+  }
+  if(method==='lifecycle'){
+    const cap=initialized?._meta?.['amplifier.dev/sessionLifecycle'];
+    if(cap?.version!==1||cap.method!=='x-amplifier/sessionLifecycle'||cap.deletion!=='preserve-history')throw Object.assign(new Error('Preserve-history lifecycle capability unavailable'),{rejected:true});
+    return client.request(cap.method,{channel:p.session,operation:p.operation,args:p.args??{}});
+  }
   if(method==='create'){
     const provider=p.provider??states.get(ROOT)?.agents?.[0]?.provider;if(!provider)throw new Error('Host advertised no agent');
     await client.request('createSession',{channel:p.session,provider,workingDirectories:[p.cwd??initialized.defaultDirectory]});return {session:p.session};

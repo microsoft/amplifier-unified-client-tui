@@ -405,6 +405,36 @@ impl App {
             return;
         }
         match v["type"].as_str().unwrap_or("") {
+            "host_review" => {
+                let label = string(&v, "label");
+                let detail = string(&v, "detail");
+                let mut choices = vec![interaction::choice("Copy displayed evidence", Action::CopyText(detail.clone()))];
+                if let Some(target) = v["open_target"].as_str() {
+                    choices.insert(0, interaction::choice("Open confirmed recovery copy — nothing sent", Action::Switch(target.into())));
+                }
+                if !label.is_empty() {
+                    choices.insert(0, interaction::choice(label, Action::HostApply(string(&v, "token"), string(&v, "target"))));
+                }
+                self.menu(format!("Host review · {}", string(&v, "purpose")), choices);
+                let clipped: String = detail.chars().take(24000).collect();
+                self.ui.menu.as_mut().unwrap().detail = format!("Selected source only. Escape preserves the draft. Recovery never replays old inputs or tool effects.\n\n{}{}", safe(&clipped), if clipped.len() < detail.len() { "\n[Display truncated; Copy includes the full bounded evidence]" } else { "" });
+            }
+            "workspaces" => {
+                let mut choices: Vec<_> = v["items"].as_array().unwrap_or(&vec![]).iter().map(|row| {
+                    interaction::choice(format!("{} · {}", string(row, "name"), string(row, "path")), Action::WorkspaceSelect(string(row, "id"), string(row, "path")))
+                }).collect();
+                if let Some(offset) = v["next_offset"].as_u64() {
+                    choices.push(interaction::choice("Next page of workspaces", Action::Workspaces(offset as usize, string(&v, "query"))));
+                }
+                self.menu("Existing workspaces · selection stays private", choices);
+                self.ui.menu.as_mut().unwrap().detail = "Choosing opens an unsent composer in that host workspace. It does not create, register, delete or start work. Escape keeps the current view and draft.".into();
+            }
+            "host_effects" => {
+                let choices = v["entries"].as_array().unwrap_or(&vec![]).iter().map(|row| {
+                    interaction::choice(format!("{} · {} · {}", string(row, "operation"), string(row, "status"), string(row, "id")), Action::HostReceipt(string(row, "id")))
+                }).collect();
+                self.menu("Original host effect receipts · read only", choices);
+            }
             "snapshot" => {
                 self.client_revision += 1;
                 self.connected = v["connected"] == true;
