@@ -1,6 +1,6 @@
 # Composition and ownership Contract — v1 (DRAFT)
 
-Proposed boundary derived from the implementation handoff.
+Proposed platform boundary derived from the implementation handoff. Ratified shared CS/CX/CD/CB client-family contracts remain parent obligations; this platform wording remains DRAFT and implementation evidence does not ratify it.
 Parent: [vision](../docs/VISION.md).
 
 ## Who builds against this
@@ -26,7 +26,7 @@ Acceptance evidence lives in [the acceptance notes](../notes/ACCEPTANCE.md).
    Broken: Changing a widget changes tool authority, or a language boundary becomes mandatory without evidence.
    Affected: client builders and people relying on predictable execution.
 
-2. **Keep policy replaceable.** Execution and context policy stay in the chosen modules.
+2. **Keep policy replaceable.** Execution and context policy stay in the chosen modules. The negotiated host and ACP agent own runtime ownership, lease policy, release and reacquisition. Private typing, navigation and inspection make zero backend writes and cannot acquire or prolong a native writer.
    Broken: An independent tool needing a TUI import breaks ecosystem compatibility.
    Affected: the boundary's clients and the person relying on them.
 

@@ -27,8 +27,14 @@ def parser():
     selection.add_argument('--resume', nargs='?', const='', metavar='ID',
                            help='Open the directory resume picker, or resume an ID, unique prefix, or latest')
     selection.add_argument('--new', action='store_true', help='Start an empty composer without creating work yet')
-    result.add_argument('--workspace', default=str(Path.cwd().resolve()),
+    result.add_argument('--workspace',
                         help='Workspace path on the server (defaults to the launch directory)')
+    result.add_argument('--agent', help='Advertised ACP agent ID for new conversations')
+    result.add_argument('--managed', action='store_true', help='Create a host-owned managed workspace on explicit Send')
+    result.add_argument('--bundle', help='Configured bundle alias for a new managed conversation')
+    result.add_argument('--provider', help='Native provider instance; requires --model and --managed')
+    result.add_argument('--model', help='Exact model ID; requires --provider and --managed')
+    result.add_argument('--effort', help='Explicit model effort for a new managed conversation')
     result.add_argument('--list-sessions', action='store_true', help='List host conversations without running work')
     result.add_argument('--bridge', action='store_true', help=argparse.SUPPRESS)
     result.add_argument('--version', action='version', version='amplifier-unified-client-tui · AHP 0.9')
@@ -48,6 +54,7 @@ def credential(args):
 async def run(args):
     token = credential(args)
     store = ClientState(args.state_dir, args.server, args.client)
+    args.workspace = args.workspace or store.data.get('workspace') or str(Path.cwd().resolve())
     transport = Transport(args.server, token, store.identity, ca_file=args.ca_file)
     try:
         if args.new:
@@ -65,7 +72,10 @@ async def run(args):
                     return
         from .frontend_bridge import serve
         await serve(lambda emit: UnifiedBridge(emit, transport, store, session=args.session or args.resume,
-                                               workspace=args.workspace, resume_picker=args.resume == ''))
+                                               workspace=args.workspace, resume_picker=args.resume == '',
+                                               creation={k: v for k, v in {'agent': args.agent, 'managed': args.managed,
+                                                   'bundle': args.bundle, 'provider': args.provider,
+                                                   'model': args.model, 'effort': args.effort}.items() if v}))
     finally:
         await transport.close()
         store.close()
@@ -75,6 +85,12 @@ def main(argv=None, workspace=None):
     arguments = list(sys.argv[1:] if argv is None else argv)
     options = parser()
     args = options.parse_args(arguments)
+    if bool(args.provider) != bool(args.model) or args.effort and not args.model:
+        options.error('--provider and --model must be paired; --effort requires both')
+    if (args.bundle or args.provider) and not args.managed:
+        options.error('--bundle/--provider/--model require --managed; existing-workspace overrides are unavailable')
+    if (args.managed or args.agent) and (args.session is not None or args.resume is not None or args.client and not args.new):
+        options.error('Launch choices require a new view (--new when restoring a client); resumed work keeps its configuration')
     try:
         args.server = validate_url(args.server)
         credential(args)  # Fail before handing terminal ownership to the renderer.

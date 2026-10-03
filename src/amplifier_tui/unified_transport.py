@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import uuid
 from pathlib import Path
 from urllib.parse import unquote, urlsplit, urlunsplit
 
@@ -79,10 +80,13 @@ class Transport:
         self.received_bytes = 0
         self.online = False
         self.changed = asyncio.Event()
+        self.page_scope = None
+        self.workspace_pages = {0: None}
         self.pages = {0: None}
         self.attached = {}
         self.selected = None
         self.closed = False
+        self.optional_unavailable = {}
         self.client_tool = None
         self.tool_tasks = set()
 
@@ -130,11 +134,15 @@ class Transport:
                     task = asyncio.create_task(self._client_tool(packet))
                     self.tool_tasks.add(task)
                     task.add_done_callback(self.tool_tasks.discard)
+                elif event == 'optionalUnavailable':
+                    self.optional_unavailable[packet['capability']] = packet['message']
                 elif event == 'connection':
                     self.online, self.generation = packet['online'], packet['generation']
                     self.pages = {0: None}
+                    self.workspace_pages = {0: None}
                 elif event == 'catalogInvalidated':
                     self.pages = {0: None}
+                    self.workspace_pages = {0: None}
                 elif event == 'session':
                     self.sessions_state[packet['uri']] = packet['state']
                 elif event == 'chat':
@@ -224,24 +232,111 @@ class Transport:
                 task.cancel()
         await asyncio.gather(*(t for t in (self.reader, self.stderr_reader) if t), return_exceptions=True)
 
+    async def prepare_creation(self, choices):
+        agents = [agent['provider'] for snapshot in self.attached.get('snapshots', [])
+                  if snapshot.get('resource') == 'ahp-root://' for agent in snapshot['state'].get('agents', [])]
+        agent = choices.get('agent')
+        if agent and agent not in agents:
+            raise ValueError('Agent is not advertised by this host')
+        args = {'provider': agent} if agent else {}
+        if not choices.get('managed'):
+            return args
+        options = await self.rpc('managed', operation='options', args=args)
+        args['provider'] = options['provider']
+        if choices.get('bundle'):
+            bundle = next((b for b in options['bundles'] if b['id'] == choices['bundle']), None)
+            if not bundle:
+                raise ValueError('Bundle alias is not configured on this host')
+            args.update(bundle=bundle['id'], bundleRevision=bundle['revision'])
+        if choices.get('provider'):
+            defaults = await self.rpc('managed', operation='defaults', args=args)
+            if not any(p['id'] == choices['provider'] for p in defaults['providers']):
+                raise ValueError('Provider instance is unavailable for the chosen bundle')
+            args['selection'] = {'instance': choices['provider'], 'model': choices['model']}
+            if choices.get('effort'):
+                args['selection']['effort'] = choices['effort']
+        return {'managed': True, **args}
+
+    async def lifecycle(self, identity, operation, args=None):
+        return await self.rpc('lifecycle', session=identity, operation=operation, args=args or {})
+
+    async def creation_receipt(self, command_id, managed=False):
+        if not managed:
+            raise ValueError('Standard creation lookup unavailable; inspect the exact session URI')
+        return await self.rpc('managed', operation='receipt', args={'commandId': command_id})
+
     async def actions(self):
         return {'conversation.send', 'conversation.stop', 'approval.respond', 'session.rename', 'session.create', 'session.history'}
 
-    async def sessions(self, *, offset=0, workspace=None):
-        if offset not in self.pages:
+    def supports(self, action):
+        manifest = self.attached.get('_meta', {}).get('amplifier.dev/capabilities', {})
+        record = manifest.get('actions', {}).get(action, {})
+        return (manifest.get('version') == 1 and record.get('method') == 'x-amplifier/capabilityAction'
+                and manifest.get('topics', {}).get(record.get('topic'), {}).get('version') == 1)
+
+    async def capability(self, action, args, channel='ahp-root://'):
+        result = await self.rpc('capability', action=action, args=args, channel=channel, commandId=str(uuid.uuid4()))
+        if result.get('accepted') is not True:
+            raise Rejected(422, {'error': result.get('result', {}).get('reason', 'Capability refused')})
+        return result['result']
+
+    async def workspaces(self, *, offset=0, query=''):
+        if not self.supports('workspace.list'):
+            raise ValueError('Workspace discovery unavailable; use an explicit --workspace host path')
+        if offset == 0:
+            self.workspace_pages = {0: None}
+            self.workspace_query = query
+        if offset not in self.workspace_pages or query != self.workspace_query:
+            raise ValueError('Workspace cursor expired; reopen Workspaces')
+        args = {'limit': 50}
+        if query:
+            args['query'] = query
+        if self.workspace_pages[offset]:
+            args['cursor'] = self.workspace_pages[offset]
+        page = await self.capability('workspace.list', args)
+        next_offset = offset + 50 if page.get('nextCursor') else None
+        if next_offset:
+            self.workspace_pages[next_offset] = page['nextCursor']
+        return {**page, 'nextOffset': next_offset}
+
+    async def sessions(self, *, offset=0, workspace=None, query=''):
+        scope = (workspace, query)
+        if offset == 0:
+            self.pages = {0: None}
+            self.page_scope = scope
+        if offset not in self.pages or self.page_scope != scope:
             raise ValueError('Catalog cursor expired after reconnect/change; reopen Resume')
-        page = await self.rpc('list', cursor=self.pages[offset])
-        next_offset = None
-        if page.get('nextCursor'):
-            next_offset = offset + 50
+        scoped = self.supports('workspace.sessions')
+        args = {'limit': 50}
+        if self.pages[offset]:
+            args['cursor'] = self.pages[offset]
+        if scoped:
+            if workspace is not None:
+                # Resolve one bounded metadata page, never inspect native files or scan all sessions.
+                if offset == 0:
+                    choices = await self.capability('workspace.list', {'query': workspace, 'limit': 50})
+                    selected = next((row for row in choices['items'] if row['path'] == workspace), None)
+                    if not selected:
+                        raise ValueError('Workspace is not in the bounded existing-directory page; use /workspaces')
+                    self.session_workspace_id = selected['id']
+                args['id'] = self.session_workspace_id
+            if query:
+                args['query'] = query
+            page = await self.capability('workspace.sessions', args)
+        else:
+            page = await self.rpc('list', cursor=self.pages[offset])
+        next_offset = offset + 50 if page.get('nextCursor') else None
+        if next_offset:
             self.pages[next_offset] = page['nextCursor']
         rows = []
         for row in page['items']:
             directory = unquote(urlsplit((row.get('workingDirectories') or [''])[0]).path)
-            if workspace is not None and directory != workspace:
+            if not scoped and workspace is not None and directory != workspace:
+                continue
+            if not scoped and query and query.casefold() not in (row['title'] + ' ' + row['resource']).casefold():
                 continue
             rows.append({'id': row['resource'], 'title': row['title'], 'workspace': directory, 'status': row['status']})
-        return {'items': rows, 'nextOffset': next_offset}
+        return {'items': rows, 'nextOffset': next_offset, 'scopedSearch': scoped}
 
     async def resolve_session(self, identity, *, workspace=None):
         if identity.startswith('ahp-session:/'):
@@ -308,7 +403,12 @@ class Transport:
         if action == 'session.create':
             session = 'ahp-session:/' + command_id
             cwd = Path(args['workspace']).as_uri() if args.get('workspace') else None
-            result = await self.rpc('create', session=session, cwd=cwd)
+            if args.get('managed'):
+                selection = {k: v for k, v in args.items() if k not in {'managed', 'workspace'}}
+                result = await self.rpc('managed', operation='create', args={
+                    **selection, 'session': session, 'commandId': command_id})
+            else:
+                result = await self.rpc('create', session=session, cwd=cwd, provider=args.get('provider'))
             return {'accepted': True, 'result': {'sessionId': result['session']}}
         snapshot = self._snapshot(identity)['session']
         chat = snapshot['chat']

@@ -55,6 +55,15 @@ class ClientState:
             if os.path.exists(temporary):
                 os.unlink(temporary)
 
+    def journal(self, identity, row):
+        # Original intent survives clearing the optimistic presentation outbox.
+        path = self.path.with_suffix('.intent.jsonl')
+        fd = os.open(path, os.O_WRONLY | os.O_APPEND | os.O_CREAT | os.O_NOFOLLOW, 0o600)
+        with os.fdopen(fd, 'a') as stream:
+            stream.write(json.dumps({'commandId': identity, **row}, ensure_ascii=False) + '\n')
+            stream.flush()
+            os.fsync(stream.fileno())
+
     def draft(self, session, text):
         self.data['drafts'][session or ''] = text
         self.save()

@@ -8,6 +8,12 @@ pub(super) enum Action {
     Group(&'static str),
     Conversations,
     Deliveries,
+    HostReview(String),
+    HostApply(String, String),
+    HostEffects,
+    Workspaces(usize, String),
+    WorkspaceSelect(String, String),
+    HostReceipt(String),
     RetryDelivery(String),
     EditDelivery(String),
     ContinueHere,
@@ -236,7 +242,7 @@ impl Interaction {
     }
 }
 
-fn choice(label: impl Into<String>, action: Action) -> Choice {
+pub(super) fn choice(label: impl Into<String>, action: Action) -> Choice {
     Choice {
         label: label.into(),
         action,
@@ -318,6 +324,9 @@ impl App {
                             | Action::Rename
                             | Action::ContinueHere
                             | Action::Deliveries
+                            | Action::HostReview(_)
+                            | Action::HostEffects
+                            | Action::Workspaces(_, _)
                             | Action::Stop
                             | Action::Send
                             | Action::Quit
@@ -443,6 +452,11 @@ impl App {
                     choice("Configure tools — root-session controls (insert unsent)", Action::CommandDraft("/config tools".into())),
                     choice("Direct tool — inspect schema before invoking (insert unsent)", Action::CommandDraft("/tool info ".into())),
                     choice("Configuration changes — inspect disabled items and edited paths (insert unsent)", Action::CommandDraft("/config diff".into())),
+                    choice("Workspaces — bounded existing-directory discovery", Action::Workspaces(0, String::new())),
+                    choice("Selected native details — passive inspection", Action::HostReview("details".into())),
+                    choice("Independent recovery copy — review source first", Action::HostReview("recovery".into())),
+                    choice("Managed files — review owned files before disposal", Action::HostReview("managed-files".into())),
+                    choice("Original recovery and file receipts — never replay", Action::HostEffects),
                     choice("Branch conversation — list captured turns (insert unsent)", Action::CommandDraft("/fork".into())),
                     choice("Clear context and goal — keep conversation history", Action::ClearContext),
                     choice("Export structured observations — private JSON", Action::ExportJson),
@@ -537,6 +551,29 @@ impl App {
                 self.ui.menu.as_mut().unwrap().detail = active.unwrap_or_else(|| {
                     "No login prompt active. Start explicitly with /provider login NAME.".into()
                 });
+            }
+            Action::HostReview(purpose) => {
+                self.status = "Loading selected host review · draft retained".into();
+                self.send(json!({"op":"host_review","purpose":purpose}));
+            }
+            Action::HostApply(token, target) => {
+                self.ui.menu = None;
+                self.status = "Applying reviewed host operation · inspect original receipt if disconnected".into();
+                self.send(json!({"op":"host_apply","token":token,"target":target}));
+            }
+            Action::Workspaces(offset, query) => {
+                self.status = "Loading bounded existing workspaces · draft retained".into();
+                self.send(json!({"op":"workspaces","offset":offset,"query":query}));
+            }
+            Action::WorkspaceSelect(id, path) => {
+                self.ui.menu = None;
+                self.send(json!({"op":"workspace_select","id":id,"path":path,"draft":self.draft.lines().join("\n")}));
+            }
+            Action::HostEffects => {
+                self.send(json!({"op":"host_effects"}));
+            }
+            Action::HostReceipt(id) => {
+                self.send(json!({"op":"host_receipt","id":id}));
             }
             Action::CommandDraft(value) => {
                 if self.draft.lines().join("\n").is_empty() {
@@ -1341,6 +1378,11 @@ impl App {
             "/cli-sessions" => Some(Action::Inspect("cli_sessions".into(), None)),
             "/recipes" => Some(Action::Inspect("recipe_files".into(), None)),
             "/new" => Some(Action::Switch("new".into())),
+            "/workspaces" => Some(Action::Workspaces(0, String::new())),
+            "/details" => Some(Action::HostReview("details".into())),
+            "/recovery" => Some(Action::HostReview("recovery".into())),
+            "/managed-files" => Some(Action::HostReview("managed-files".into())),
+            "/effects" => Some(Action::HostEffects),
             "/deliveries" => Some(Action::Deliveries),
             "/pending" => Some(Action::QueueList),
             "/queue" => Some(Action::QueueList),
