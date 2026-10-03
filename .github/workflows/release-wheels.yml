@@ -40,10 +40,25 @@ jobs:
           uv sync --no-sources
       - name: Fetch reviewed independent host artifact
         run: |
-          mkdir -p .state
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          state = Path.cwd().resolve() / ".state"
+          if state.resolve() != state:
+              raise SystemExit("Host consumer state must stay inside this checkout")
+          state.mkdir(exist_ok=True)
+          consumer = state / "host"
+          consumer.mkdir()  # A reused or linked consumer must fail before installing.
+          (consumer / "package.json").write_text(json.dumps({
+              "name": "tui-host-qualification-consumer", "version": "0.0.0", "private": True
+          }) + "\n")
+          PY
           curl --fail --location --proto '=https' "$HOST_TARBALL_URL" -o .state/host.tgz
           python -c "import hashlib,os,pathlib; assert hashlib.sha256(pathlib.Path('.state/host.tgz').read_bytes()).hexdigest()==os.environ['HOST_TARBALL_SHA256']"
-          npm install --prefix .state/host --ignore-scripts "$PWD/.state/host.tgz"
+          TUI_HOST_ROOT="$(pwd -P)/.state/host"
+          test "$(npm --prefix "$TUI_HOST_ROOT" --global=false --workspaces=false prefix)" = "$TUI_HOST_ROOT"
+          test "$(npm --prefix "$TUI_HOST_ROOT" --global=false --workspaces=false root)" = "$TUI_HOST_ROOT/node_modules"
+          npm install --prefix "$TUI_HOST_ROOT" --global=false --workspaces=false --ignore-scripts "$PWD/.state/host.tgz"
       - name: Source, package, independent install and actual terminal gate
         run: |
           export AHP_HOST_ENTRY="$PWD/.state/host/node_modules/@amplifier/unified-host/dist/cli.js"
