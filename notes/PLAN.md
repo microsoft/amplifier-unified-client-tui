@@ -49,3 +49,9 @@ complete original audit record and validate its exact command identity and text
 against the private intent journal. Missing, malformed or wrong records fail;
 retain read-only retry, unchanged provider audit and unknown-status assertions.
 This changes test ordering only; earlier qualified source identities remain intact.
+
+PTY observer receipt repair (continuity.v1:2): concurrent probe cleanup must retain
+every resource identity/status in its shared test receipt. Serialize thread updates
+and atomically replace the receipt in its own directory so readers see complete
+JSON. Malformed existing receipts must still fail without replacement. Qualify a
+new exact source; retain the earlier passing source and failed cleanup receipts.

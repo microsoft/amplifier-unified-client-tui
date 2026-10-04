@@ -16,6 +16,8 @@ import signal
 import struct
 import subprocess
 import sys
+import tempfile
+import threading
 import termios
 import time
 from datetime import datetime, timezone
@@ -24,29 +26,39 @@ from pathlib import Path
 import pyte
 
 ROOT = Path(__file__).resolve().parents[1]
+_RECORD_LOCK = threading.Lock()
 
 
 def record(pid, status):
-    path = ROOT / ".state/WORKSPACE-MANIFEST.json"
-    path.parent.mkdir(parents=True, exist_ok=True)
-    data = json.loads(path.read_text()) if path.exists() else {"version": 1, "resources": []}
-    now = datetime.now(timezone.utc).isoformat()
-    identity = f"probe-pty-{pid}"
-    entry = next((e for e in data["resources"] if e["id"] == identity), None)
-    if entry is None:
-        entry = {
-            "kind": "pty",
-            "id": identity,
-            "pid": pid,
-            "created_at": now,
-            "note": "Isolated PTY probe process group",
-            "teardown": f"kill -TERM -- -{pid}",
-        }
-        data["resources"].append(entry)
-    entry["status"] = status
-    if status == "reaped":
-        entry["reaped_at"] = now
-    path.write_text(json.dumps(data, indent=2) + "\n")
+    with _RECORD_LOCK:
+        path = ROOT / ".state/WORKSPACE-MANIFEST.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        data = json.loads(path.read_text()) if path.exists() else {"version": 1, "resources": []}
+        now = datetime.now(timezone.utc).isoformat()
+        identity = f"probe-pty-{pid}"
+        entry = next((e for e in data["resources"] if e["id"] == identity), None)
+        if entry is None:
+            entry = {
+                "kind": "pty",
+                "id": identity,
+                "pid": pid,
+                "created_at": now,
+                "note": "Isolated PTY probe process group",
+                "teardown": f"kill -TERM -- -{pid}",
+            }
+            data["resources"].append(entry)
+        entry["status"] = status
+        if status == "reaped":
+            entry["reaped_at"] = now
+        descriptor, temporary = tempfile.mkstemp(prefix=".probe-receipt-", dir=path.parent)
+        try:
+            with os.fdopen(descriptor, "w") as stream:
+                stream.write(json.dumps(data, indent=2) + "\n")
+                stream.flush()
+                os.fsync(stream.fileno())
+            os.replace(temporary, path)
+        finally:
+            Path(temporary).unlink(missing_ok=True)
 
 
 class Screen(pyte.Screen):
