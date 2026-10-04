@@ -1,0 +1,8 @@
+{
+  "format": "reviewed-standalone-root-extraction-peer.v1",
+  "sourceRepository": "https://github.com/microsoft/amplifier-unified",
+  "sourceCommit": "e5ce9512bbf1e2cbf8dbff5ef53049d1f27f71ad",
+  "sourcePath": "distribution/src/terminal-install-client.mjs",
+  "sha256": "070181c73c016612d42c8afc668576665026405c3347ca76d28e8c8c7ba7fd6b",
+  "purpose": "Qualification input only; use exported extractRuntime without enrollment or installer execution"
+}
