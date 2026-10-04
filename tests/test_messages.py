@@ -345,3 +345,38 @@ async def test_rapid_selection_commits_in_order_and_never_shows_pending_scope(tm
     bridge.pump.cancel()
     await asyncio.gather(bridge.pump, return_exceptions=True)
     bridge.store.close()
+
+
+@pytest.mark.parametrize('control', ['commit', 'cancel', 'replacement'])
+def test_pending_selection_rebinds_only_current_generation_latest_packet(tmp_path, control):
+    bridge, transport, events = setup(tmp_path)
+    target = 'ahp-session:/return'
+    transport.generation = 0
+    token = bridge.messages.begin_selection(target)
+    def packet(generation, revision, emoji):
+        return {'generation': generation, 'scope': target,
+            'record': {'topic': 'message-metadata', 'scope': target,
+                'revision': revision, 'data': {'changedMessage': {**transport.row(),
+                    'revision': revision, 'reactions': [emoji], 'mine': [emoji], 'counts': {emoji: 1}}}}}
+    bridge.messages.accept(packet(0, 99, '👍'))
+    transport.generation = 1
+    # A reset resource counter still replaces the old connection's buffer.
+    bridge.messages.accept(packet(1, 1, '✅'))
+    bridge.messages.accept(packet(1, 2, '🎉'))
+    bridge.messages.accept(packet(1, 1, '✅'))
+    bridge.messages.accept(packet(0, 100, '👍'))
+    assert not bridge.messages.rows and bridge.messages.selection_record['generation'] == 1
+    assert bridge.messages.selection_record['record']['revision'] == 2
+    before = len(events)
+    if control == 'replacement':
+        bridge.messages.begin_selection('ahp-session:/newer')
+    bridge.selected = target
+    bridge.messages.finish_selection(token, committed=control != 'cancel')
+    if control == 'commit':
+        assert bridge.messages.rows[(target, LOCATOR['messageId'])]['mine'] == ['🎉']
+        bridge.messages.accept(packet(0, 101, '👍'))
+        assert bridge.messages.rows[(target, LOCATOR['messageId'])]['mine'] == ['🎉']
+    else:
+        assert not bridge.messages.rows and len(events) == before
+    assert not transport.calls
+    bridge.store.close()

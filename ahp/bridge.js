@@ -92,7 +92,7 @@ async function readMessageWatch(watch){
  watch.pending=(async()=>{try{
   do{watch.dirty=false;const record=await messageRecord(watch.scope,watch.uri);
    if(watch!==messageWatch||watch.scope!==selected||client!==connection)return;
-   if(record.revision>(watch.revision??-1)){watch.revision=record.revision;output({event:'messageMetadata',scope:watch.scope,record});}
+   if(record.revision>(watch.revision??-1)){watch.revision=record.revision;output({event:'messageMetadata',generation,scope:watch.scope,record});}
   }while(watch.dirty);
  }catch{if(watch===messageWatch)output({event:'optionalUnavailable',capability:'message-watch',message:'Shared reaction updates unavailable; reopen Inspect for current counts. Original receipts retained.'});}
  finally{watch.pending=undefined;}})();return watch.pending;

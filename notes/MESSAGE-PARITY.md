@@ -52,3 +52,8 @@ Independent b55 installed review found initial watch metadata arriving before
 Python committed a returning selection. Preserve that red candidate; qualify a
 bounded selection handoff with return, competing selection and cancellation
 controls. No polling or unknown command replay is authorized by this repair.
+
+Independent 63c installed review found reconnect during pending selection dropped
+the new-generation initial watch record. Preserve 63c/de1a and its review failure;
+qualify explicit generation-stamped packets and same-selection bounded rebind,
+including lower resource revision after reconnect and stale packet rejection.

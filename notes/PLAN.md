@@ -28,3 +28,9 @@ an in-flight selected scope and connection generation. Commit it only after the
 matching selection snapshot; discard on cancellation, replacement or reconnect.
 Serialize selections so a late snapshot cannot replace a newer view. This keeps
 public selected-resource projection and private unknown receipts independent.
+
+Pending selection reconnect: a validated watch packet explicitly stamped with
+the current transport generation may replace the pending selection's old-generation
+buffer. Keep its same selection token/scope, discard the old packet, and compare
+revisions only within that generation. Reject old-generation packets and keep
+cancellation/replacement cleanup. No additional read or input replay is needed.

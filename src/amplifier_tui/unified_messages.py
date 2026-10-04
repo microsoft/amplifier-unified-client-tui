@@ -266,17 +266,23 @@ class Messages:
     def accept(self, packet):
         scope, record = packet.get('scope'), packet.get('record')
         pending = self.selection_pending
+        generation = getattr(self.bridge.transport, 'generation', 0)
+        if packet.get('generation', generation) != generation:
+            return
         if (scope != self.bridge.selected and not (pending and pending[1] == scope)) or not isinstance(record, dict):
             return
         revision, data = record.get('revision'), record.get('data')
-        key = (scope, getattr(self.bridge.transport, 'generation', 0))
+        key = (scope, generation)
         if (record.get('scope') != scope or record.get('topic') != 'message-metadata'
                 or type(revision) is not int or revision < 0 or not isinstance(data, dict)
                 or revision <= self.record_revisions.get(key, -1)):
             return
         if pending and pending[1] == scope:
-            if pending[2] != key[1]:
-                return
+            if pending[2] != generation:
+                # A fresh connection may finish the same pending selection.
+                # Its initial record replaces the old lifetime's buffer.
+                self.selection_pending = (pending[0], scope, generation)
+                self.selection_record = None
             prior = self.selection_record
             if prior is None or revision > prior['record']['revision']:
                 self.selection_record = deepcopy(packet)

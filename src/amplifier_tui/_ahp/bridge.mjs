@@ -6633,7 +6633,7 @@ async function readMessageWatch(watch) {
         if (watch !== messageWatch || watch.scope !== selected || client !== connection) return;
         if (record.revision > (watch.revision ?? -1)) {
           watch.revision = record.revision;
-          output({ event: "messageMetadata", scope: watch.scope, record });
+          output({ event: "messageMetadata", generation, scope: watch.scope, record });
         }
       } while (watch.dirty);
     } catch {
