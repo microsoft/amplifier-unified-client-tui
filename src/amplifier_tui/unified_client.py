@@ -330,27 +330,28 @@ class UnifiedBridge:
             token = self.messages.begin_selection(identity)
             try:
                 snapshot = await self.transport.snapshot(identity)
+                if self.pump:
+                    self.pump.cancel()
+                    await asyncio.gather(self.pump, return_exceptions=True)
+                self.generation += 1
+                self.selected = identity
+                self.deleted = False
+                self.instance, self.revision = None, -1
+                self.session = snapshot['session']
+                self.store.data['session'] = identity
+                self.store.save()
+                self.online = True
+                self.initial(preserve_draft=preserve_draft)
+                self.reconcile(snapshot)
+                self.messages.finish_selection(token, committed=True)
+                self.pump = asyncio.create_task(self.watch(identity, self.generation))
+                if 'session.warm' in self.actions:
+                    self.later(self.warm(identity))
             except BaseException:
-                self.messages.finish_selection(token)
                 self.transport.selected = None
                 raise
-            if self.pump:
-                self.pump.cancel()
-                await asyncio.gather(self.pump, return_exceptions=True)
-            self.generation += 1
-            self.selected = identity
-            self.deleted = False
-            self.instance, self.revision = None, -1
-            self.session = snapshot['session']
-            self.store.data['session'] = identity
-            self.store.save()
-            self.online = True
-            self.initial(preserve_draft=preserve_draft)
-            self.reconcile(snapshot)
-            self.messages.finish_selection(token, committed=True)
-            self.pump = asyncio.create_task(self.watch(identity, self.generation))
-            if 'session.warm' in self.actions:
-                self.later(self.warm(identity))
+            finally:
+                self.messages.finish_selection(token)
 
     async def warm(self, identity):
         try:
