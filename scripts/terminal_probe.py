@@ -202,6 +202,19 @@ class Probe:
         os.write(self.master, data)
         return start
 
+    def wait_screen(self, predicate, *, after_bytes, timeout=15):
+        """Wait for fresh parsed output satisfying an explicit complete-screen condition.
+
+        This is presentation evidence only. Callers must bind new content and all
+        required geometry; it does not establish execution or a busy transition.
+        """
+        end = time.monotonic() + timeout
+        while time.monotonic() < end:
+            self.read()
+            if self.bytes > after_bytes and predicate(self):
+                return time.monotonic_ns()
+        raise AssertionError(f"Terminal did not reach the complete screen condition\n{self.text}")
+
     def wait_idle(self, timeout=15):
         """Observe current footer, never a completed message in old scrollback.
 

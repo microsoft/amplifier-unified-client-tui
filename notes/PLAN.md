@@ -55,3 +55,11 @@ every resource identity/status in its shared test receipt. Serialize thread upda
 and atomically replace the receipt in its own directory so readers see complete
 JSON. Malformed existing receipts must still fail without replacement. Qualify a
 new exact source; retain the earlier passing source and failed cleanup receipts.
+
+Simulated renderer observer repair (presentation.v1:3, continuity.v1:2): a
+fixed settling delay cannot prove complete geometry, and a coalesced PTY read
+may omit an intermediate busy projection. Bound the geometry wait by its exact
+composer rows/text. Bind explicit Tab submission to its new user/response text,
+complete composer/actions and Ready footer observed after input. Keep general
+wait_idle transition requirements and all geometry/teardown assertions unchanged.
+Controlled fragmented/coalesced mechanisms are separate from actual Mac evidence.
