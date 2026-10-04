@@ -313,3 +313,34 @@ async def test_cancelled_selection_discards_initial_record_and_forces_new_handsh
     assert bridge.messages.selection_pending is None and transport.selected is None
     assert bridge.selected == 'ahp-session:/a'
     bridge.store.close()
+
+
+async def test_rapid_selection_commits_in_order_and_never_shows_pending_scope(tmp_path):
+    bridge, transport, events = setup(tmp_path)
+    gate = asyncio.Event()
+    entered = []
+    async def resolve(identity, **kwargs):
+        return identity
+    async def snapshot(identity):
+        entered.append(identity)
+        if identity == 'ahp-session:/first':
+            await gate.wait()
+        return {'protocolVersion': 1, 'hostInstanceId': 'fixture', 'revision': len(entered),
+                'session': {'id': identity, 'messages': []}}
+    async def watch(*args):
+        await asyncio.Event().wait()
+    transport.resolve_session, transport.snapshot = resolve, snapshot
+    bridge.watch = watch
+    first = asyncio.create_task(bridge.select('ahp-session:/first'))
+    await asyncio.sleep(0)
+    last = asyncio.create_task(bridge.select('ahp-session:/last'))
+    await asyncio.sleep(0)
+    assert entered == ['ahp-session:/first'] and bridge.selected == 'ahp-session:/a'
+    gate.set()
+    await asyncio.gather(first, last)
+    assert entered == ['ahp-session:/first', 'ahp-session:/last']
+    assert bridge.selected == bridge.session['id'] == 'ahp-session:/last'
+    assert bridge.messages.selection_pending is None
+    bridge.pump.cancel()
+    await asyncio.gather(bridge.pump, return_exceptions=True)
+    bridge.store.close()
