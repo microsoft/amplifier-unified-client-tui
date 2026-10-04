@@ -15,8 +15,16 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-22.04, ubuntu-24.04-arm, macos-14, macos-15-intel]
-    runs-on: ${{ matrix.os }}
+        include:
+          - runner: ubuntu-22.04
+            target: linux-x86_64
+          - runner: ubuntu-24.04-arm
+            target: linux-arm64
+          - runner: macos-14
+            target: macos-arm64
+          - runner: macos-15-intel
+            target: macos-x86_64
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 30
     env:
       PYTHONDONTWRITEBYTECODE: "1"
@@ -64,12 +72,15 @@ jobs:
           export AHP_HOST_ENTRY="$PWD/.state/host/node_modules/@amplifier/unified-host/dist/cli.js"
           export AHP_HOST_MODULE="file://$PWD/.state/host/node_modules/@amplifier/unified-host/dist/index.js"
           uv run --no-sync python scripts/qualify_current.py
+      - name: Export exact qualified manifest and safe evidence
+        run: |
+          uv run --no-sync python scripts/release_manifest.py export --output .release-assets --expected-target "${{ matrix.target }}"
+          uv run --no-sync python scripts/release_manifest.py validate .release-assets/manifest.json --verify-assets
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: amplifier-unified-client-tui-${{ matrix.os }}
+          name: amplifier-unified-client-tui-${{ matrix.runner }}
           path: |
-            dist/*.whl
-            .evidence/current
+            .release-assets/*
           if-no-files-found: error
           retention-days: 14
 # No automatic tag, publication, deployment or credentialed provider call.

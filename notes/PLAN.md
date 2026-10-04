@@ -34,3 +34,10 @@ the current transport generation may replace the pending selection's old-generat
 buffer. Keep its same selection token/scope, discard the old packet, and compare
 revisions only within that generation. Reject old-generation packets and keep
 cancellation/replacement cleanup. No additional read or input replay is needed.
+
+| RELEASE-01 | composition.v1:1, ecosystem.v1:6, continuity.v1:2 | Versioned qualified wheel manifest and supported-platform CI artifacts | Exact new-repository source/version, AHP/runtime/platform/bytes/hash bindings, independent installed/isolation/PTY/privacy receipts; failed or unqualified targets absent; root alone publishes after review | Proposed; release manifest validation and safe evidence packaging under qualification |
+
+RELEASE-01 review repair: refuse nonregular/symlink input through no-follow,
+nonblocking descriptors before reading. Bound JSON at MAX_BYTES+1, stream wheel
+hash/copy within declared bytes, and reject descriptor/path identity or content
+changes. Preserve f6 evidence; requalify a separate successor before adoption.

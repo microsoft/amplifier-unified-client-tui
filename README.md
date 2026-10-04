@@ -184,3 +184,7 @@ check alone proves publication, installation elsewhere or real-account compatibi
 
 The [repo-local parity inventory](notes/CONNECTED-PARITY.md) records contract mapping,
 installed-peer evidence and remaining acceptance boundaries.
+
+Qualified release asset schema, supported-platform candidate workflow and safe
+publication handoff are described in [release/README.md](release/README.md).
+Only independently passing installed platform artifacts may be advertised.
