@@ -63,3 +63,12 @@ composer rows/text. Bind explicit Tab submission to its new user/response text,
 complete composer/actions and Ready footer observed after input. Keep general
 wait_idle transition requirements and all geometry/teardown assertions unchanged.
 Controlled fragmented/coalesced mechanisms are separate from actual Mac evidence.
+
+Managed runtime qualification (ecosystem.v1:6, composition.v1:1): preserve the
+qualified wheel/source evidence and supplement it with exact checksum-bound
+managed Python/Node archive identities, Node executable digests, and actual
+installed PTYs on the already-supported Intel Linux/macOS runners. Use reviewed
+same-repository host inputs and previously sealed wheel artifacts; no client
+behavior change, native rebuild, user credentials, publication, or feed binding.
+Keep managed-runtime acceptance distinct from earlier system/runner-cache
+qualification and from account, physical-device, older-OS, or live acceptance.
