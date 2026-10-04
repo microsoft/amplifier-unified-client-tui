@@ -289,6 +289,7 @@ class Messages:
 
     def decorate(self, items):
         result = []
+        pending = [item for item in self.effects().items() if item[1]['session'] == self.bridge.selected and item[1]['status'] == 'unknown']
         for item in items:
             result.append(item)
             locator = reference(item.get('reference'), reaction=True)
@@ -297,6 +298,12 @@ class Messages:
                 result.append({'id': 'reaction:' + item['id'], 'kind': 'notice', 'text': 'Reactions · ' + ' · '.join(
                     emoji + ' ' + str(row['counts'][emoji]) + (' · yours' if emoji in row['mine'] else '')
                     for emoji in row['reactions']), 'status': '', 'detail': ''})
+            if locator:
+                for command, effect in pending:
+                    if effect['args']['reference']['messageId'] == locator['messageId']:
+                        result.append({'id': 'message-effect:' + command, 'kind': 'notice',
+                                       'text': 'Reaction request pending' if command in self.running else 'Reaction is not confirmed · inspect Original receipts; nothing will be repeated',
+                                       'status': 'pending' if command in self.running else 'unknown', 'detail': command})
         return result
 
     async def read(self, identity):
@@ -383,5 +390,6 @@ class Messages:
         b.store.save()
         # Original evidence is not a current-state read and cannot replace newer counts.
         if b.selected == effect['session']:
+            b.publish()
             b.send('host_review', purpose='result', detail=json.dumps(value, ensure_ascii=False), label='')
         return True, 'Original reaction confirmed. Inspect shared reactions for current counts.'

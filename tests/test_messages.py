@@ -261,4 +261,9 @@ def test_selected_watch_is_monotonic_and_never_settles_unknown_intent(tmp_path):
     bridge.messages.accept(update(10, 100, ['👍'], 'ahp-session:/other'))
     assert len(events) == before
     assert bridge.store.data['messageEffects']['original'] == unknown and not transport.calls
+    shown = bridge.messages.decorate([{'id': 'source', 'reference': LOCATOR, 'kind': 'assistant', 'text': 'saved'}])
+    assert any('not confirmed' in row['text'] for row in shown)
+    bridge.store.data['messageEffects']['original']['status'] = 'confirmed'
+    shown = bridge.messages.decorate([{'id': 'source', 'reference': LOCATOR, 'kind': 'assistant', 'text': 'saved'}])
+    assert not any('not confirmed' in row['text'] for row in shown)
     bridge.store.close()
