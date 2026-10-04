@@ -15,3 +15,5 @@ Desired behavior is distinct from current [acceptance](ACCEPTANCE.md).
 | CATALOG-01 | composition.v1:1, interaction.v1:1 | Negotiated workspace/root-session discovery | 50-row host-filtered pages; cursor binds query/workspace/connection; no dormant runtime | Implemented; acceptance tracked in CONNECTED-PARITY |
 
 | WHEEL-01 | composition.v1:1, ecosystem.v1:6 | Reproducible native wheel build and installed client | Compiler deployment floor and isolated host proc-macro artifacts; installed helper/native isolation and actual connected PTYs | Implemented; causal evidence in WHEEL-BUILD |
+
+| CONFIG-01 | session.v1:6, ecosystem.v1:2, continuity.v1:2 | Standard connected model/settings selection and truthful optional controls | Advertised mutable schema choices, readback confirmation, refusal/unknown distinction, local draft preservation and receipt-only inspection | Implemented; standard installed host and actual terminal picker/refusal qualified; fresh native schema boundary reported separately |

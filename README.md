@@ -77,6 +77,15 @@ refuse explicitly, without converting a command into a model prompt.
 this client and opens an unsent composer; `/resume` uses server-filtered root sessions
 when workspace.sessions is advertised. Standard-only hosts retain 50-row catalog
 paging with visibly local per-page filters and unverified child semantics.
+`/settings` (also `/models`) opens the standard host-provided model and conversation
+settings. Opening the picker refreshes only the selected standard session snapshot,
+without warming an agent. Only offered mutable choices can be selected; confirmation uses the action
+echo and current host values. The private draft stays unchanged and no message is
+sent. Refused changes and unknown outcomes have different notices. `/effects`
+inspects original setting receipts; current readback never proves an unknown request.
+Cold managed creation keeps its explicit launch flags until the host provides a
+standard session schema; this client does not warm an agent just to guess choices.
+
 `/details` inspects the selected native identity and failure information. `/recovery`
 reviews a cold independent recovery copy; confirmation binds the inspected history
 revision and never submits the retained draft. `/managed-files` reviews only a proved
@@ -106,7 +115,8 @@ snapshots. Catalog cursors are discarded after reconnection or invalidation.
 | History and reconnect | view.turns 50, fetchTurns, official replay/snapshot; no command replay |
 | Private drafts/navigation/editors | Client disk and Ratatui; zero backend edit traffic |
 | Usage and artifacts | Reported usage and generic resource references; rich viewers remain separate |
-| Native module/provider/mode configuration | Host capability owner; no private runtime import or guessed setting |
+| Standard model / mutable conversation settings | Advertised standard schema and action echo/readback; no prompt, private draft retained |
+| Native module/provider configuration beyond standard schema | Host capability owner; no private runtime import or guessed setting |
 | Independent recovery copy / managed-file review | Negotiated preserve-history lifecycle; passive review, explicit exact-revision confirmation, original effect receipts |
 | Workspace discovery / scoped root sessions | Negotiated workspace.list/workspace.sessions; 50-row opaque cursor pages; local private selection |
 | Queue, steer, force stop, takeover, history editing | Explicitly unavailable until negotiated and mapped |

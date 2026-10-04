@@ -248,3 +248,31 @@ async def test_negotiated_workspace_root_sessions_search_and_cursor_scopes(nativ
         assert not audit.exists()
     finally:
         await bridge.close()
+
+
+async def test_current_native_model_configuration_or_truthful_unavailability(native_host):
+    bridge, events = await native_view(native_host)
+    _, root, _, audit = native_host
+    try:
+        assert (await bridge.dispatch(request(bridge, 'submit', text='Synthetic configuration fixture seed')))[0]
+        await wait_for(lambda: bridge.session.get('status') == 'ready' and audit.exists())
+        original_audit = audit.read_bytes()
+        await bridge.dispatch(request(bridge, 'draft', text='Native setting draft remains private'))
+        offered = await bridge.dispatch(request(bridge, 'setting_choices', property='model'))
+        if not bridge.session.get('config', {}).get('schema', {}).get('properties', {}).get('model', {}).get('enum'):
+            assert not offered[0] and 'cannot be changed' in offered[1]
+            assert not bridge.store.data.get('configEffects')
+            assert bridge.store.data['drafts'][bridge.selected] == 'Native setting draft remains private'
+            assert audit.read_bytes() == original_audit
+            return  # This installed native fixture supplied no standard model schema; no choices are guessed.
+        assert offered[0], (offered, bridge.session.get('config'))
+        menu = next(e for e in reversed(events) if e['type'] == 'setting_choices')
+        alternative = next(row['value'] for row in menu['choices'] if row['value'] != menu['current'])
+        changed = await bridge.dispatch(request(bridge, 'setting_set', property='model', value=alternative))
+        assert changed[0], changed
+        assert bridge.session['config']['values']['model'] == alternative
+        assert bridge.store.data['drafts'][bridge.selected] == 'Native setting draft remains private'
+        assert audit.read_bytes() == original_audit  # Changing the native setting did not run another completion.
+        assert (root / 'client/connections/parity.intent.jsonl').exists()
+    finally:
+        await bridge.close()

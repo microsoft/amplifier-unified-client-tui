@@ -21,6 +21,7 @@ class UnifiedBridge:
         self.creation_args = {}
         self.reviews = {}
         self.workspace_choices = {}
+        self.published_controls = None
         self.session = {}
         self.actions = set()
         self.pump = None
@@ -106,6 +107,7 @@ class UnifiedBridge:
         self.opened = True
 
     def initial(self, preserve_draft=False):
+        self.published_controls = None
         self.published, self.published_order, self.published_title = {}, [], None
         self.send('snapshot', reset=not preserve_draft, connected=True, ready=True, navigation=True,
                   resume_picker=self.resume_picker,
@@ -122,10 +124,83 @@ class UnifiedBridge:
                   'Client: ' + self.store.identity,
                   'Stop uses Unified cancellation; graceful/force stages are not negotiated.',
                   'Use /deliveries to inspect uncertain input. Rich artifacts open in the web client.'],
-                  commands=['/new', '/resume', '/rename', '/stop', '/deliveries', '/details', '/recovery', '/managed-files', '/effects', '/workspaces'], steer=False)
+                  commands=['/new', '/resume', '/rename', '/stop', '/deliveries', '/effects'], steer=False)
+        self.publish_controls()
         # The connected protocol does not negotiate standalone mode controls.
         self.send('mode_status', supported=False)
         self.publish()
+
+    def publish_controls(self):
+        commands = ['/new', '/resume', '/rename', '/stop', '/deliveries', '/effects']
+        properties = self.session.get('config', {}).get('schema', {}).get('properties', {})
+        if self.selected and any(prop.get('sessionMutable') is True and prop.get('enum') for prop in properties.values()):
+            commands.append('/settings')
+        lifecycle = getattr(self.transport, 'attached', {}).get('_meta', {}).get('amplifier.dev/sessionLifecycle', {})
+        if self.selected and lifecycle.get('version') == 1 and lifecycle.get('method') == 'x-amplifier/sessionLifecycle' and lifecycle.get('deletion') == 'preserve-history':
+            commands += ['/details', '/recovery', '/managed-files']
+        if getattr(self.transport, 'supports', lambda _: False)('workspace.list'):
+            commands.append('/workspaces')
+        if self.published_controls != commands:
+            self.send('commands', commands=commands)
+            self.published_controls = commands
+
+    def settings_menu(self, property_id=None, notice=""):
+        config = self.session.get('config', {})
+        properties = config.get('schema', {}).get('properties', {})
+        if property_id is None:
+            rows = [{'id': key, 'label': value.get('title') or key,
+                     'current': dict(zip(value.get('enum', []), value.get('enumLabels', []))).get(config.get('values', {}).get(key), config.get('values', {}).get(key))} for key, value in properties.items()
+                    if value.get('sessionMutable') is True and value.get('enum')]
+            uncertain = any(row.get('session') == self.selected and row.get('status') == 'unknown' for row in self.store.data.get('configEffects', {}).values())
+            self.send('settings', properties=rows, uncertain=uncertain, notice=notice)
+            return bool(rows), 'Choose a model or setting' if rows else 'This host has not provided changeable settings. Keep your draft and choose another conversation.'
+        prop = properties.get(property_id, {})
+        if prop.get('sessionMutable') is not True or not prop.get('enum'):
+            return False, 'This setting cannot be changed here. Your draft is kept.'
+        labels = prop.get('enumLabels', [])
+        self.send('setting_choices', property=property_id, title=prop.get('title') or property_id,
+                  current=config.get('values', {}).get(property_id), choices=[
+                      {'value': value, 'label': labels[i] if i < len(labels) else str(value)}
+                      for i, value in enumerate(prop['enum'])])
+        return True, 'Choose an offered value; no message will be sent'
+
+    async def configure(self, request, target):
+        key, value = request.get('property'), request.get('value')
+        config = self.session.get('config', {})
+        prop = config.get('schema', {}).get('properties', {}).get(key, {})
+        if not target or prop.get('sessionMutable') is not True or value not in prop.get('enum', []):
+            return False, 'That choice is no longer available. Reopen Model and settings; your draft is kept.'
+        effects = self.store.data.setdefault('configEffects', {})
+        if len(effects) >= 512:
+            return False, 'Saved setting receipts are full. Existing evidence and your draft are kept.'
+        identity = str(uuid.uuid4())
+        row = {'session': target, 'operation': 'session.configure', 'args': {'config': {key: value}}, 'status': 'unknown'}
+        effects[identity] = row
+        self.store.journal(identity, row)
+        self.store.save()
+        try:
+            await self.transport.command(target, 'session.configure', row['args'], identity)
+            if self.selected != target:
+                raise ValueError('Selection changed while setting result was pending')
+            snapshot = await self.transport.snapshot(target)
+            self.reconcile(snapshot)
+            observed = snapshot['session'].get('config', {}).get('values', {})
+            if observed.get(key) != value:
+                raise ValueError('Accepted echo has no matching setting readback')
+            row.update(status='confirmed', observed=observed)
+            message = 'Setting changed. Your draft is kept; no message was sent.'
+            ok = True
+        except Rejected as exc:
+            row.update(status='refused', error=str(exc))
+            message, ok = 'This host declined the setting change. Reopen Model and settings to choose an available value; your draft is kept.', False
+        except (OSError, ValueError, TimeoutError) as exc:
+            row['error'] = str(exc)
+            message, ok = 'Setting change is not confirmed. Open Original receipts before making another change; your draft is kept.', False
+        self.store.journal(identity, row)
+        self.store.save()
+        if self.selected == target:
+            self.settings_menu(notice=message)
+        return ok, message
 
     def items(self):
         return project(self.session, self.store.data['outbox'])
@@ -197,6 +272,7 @@ class UnifiedBridge:
         if self.instance and self.instance != instance:
             self.retired_instances.add(self.instance)
         self.instance, self.revision, self.session = instance, revision, session
+        self.publish_controls()
         changed = False
         for message in session.get('messages', []):
             identity = message.get('inputId')
@@ -304,7 +380,7 @@ class UnifiedBridge:
         except (OSError, ValueError, TimeoutError) as exc:
             row['error'] = str(exc)
             self.store.save()
-            return False, 'Outcome unconfirmed; /effects inspects the original receipt without replay'
+            return False, ('History is still updating, so the recovery copy could not be created. Keep this conversation and inspect Original receipts before trying again.' if 'Indexed family coverage' in str(exc) else 'This change is not confirmed. Open Original receipts before trying again; your draft is kept.')
 
     async def dispatch(self, request):
         op = request.get('op')
@@ -319,6 +395,20 @@ class UnifiedBridge:
         if op in {'draft', 'editor_draft'}:
             self.store.draft(target, request.get('text', ''))
             return True, 'Draft saved locally'
+        if op in {'settings', 'setting_choices', 'setting_set'}:
+            if not self.online:
+                return False, 'Reconnect before changing settings; your draft is kept.'
+            if op == 'setting_set':
+                return await self.configure(request, target)
+            if target:
+                try:
+                    await self.transport.rpc('refreshSession', session=target)
+                    if self.selected != target:
+                        return False, 'Conversation changed. Reopen Model and settings; your draft is kept.'
+                    self.reconcile(await self.transport.snapshot(target))
+                except (Rejected, OSError, ValueError, TimeoutError):
+                    return False, 'Settings could not be loaded. Reconnect and open Model and settings again; your draft is kept.'
+            return self.settings_menu(request.get('property') if op == 'setting_choices' else None)
         if op in {'host_review', 'host_apply', 'host_effects', 'host_receipt'}:
             if not self.online:
                 return False, 'Disconnected; optional read unavailable; draft and original receipts retained'
@@ -329,7 +419,7 @@ class UnifiedBridge:
                     return await self.host_review(request['purpose'], target)
                 if op == 'host_apply':
                     return await self.apply_host_review(request, target)
-                effects = self.store.data.get('hostEffects', {})
+                effects = {**self.store.data.get('hostEffects', {}), **self.store.data.get('configEffects', {})}
                 if op == 'host_effects':
                     self.send('host_effects', entries=[{'id': key, **row} for key, row in effects.items()
                                                       if row['session'] == target])
@@ -337,13 +427,20 @@ class UnifiedBridge:
                 row = effects.get(request.get('id'))
                 if not row or row['session'] != target:
                     return False, 'Receipt target differs'
+                if row['operation'] == 'session.configure':
+                    self.send('host_review', purpose='receipt', detail=json.dumps({'original': row, 'currentObservedValues': self.session.get('config', {}).get('values', {}), 'limits': 'Current values do not prove the outcome of an unknown request. Nothing was resent.'}, indent=2), label='')
+                    return True, 'Original setting receipt inspected. Nothing was resent.'
+                self.send('host_review', purpose='receipt', detail=json.dumps({'original': row, 'limits': 'Saved original evidence; lookup does not resend the change.'}, indent=2), label='')
                 operation = 'managedFiles.receipt' if row['operation'] == 'managedFiles.dispose' else 'receipt'
                 result = await self.transport.lifecycle(target, operation, {'commandId': request['id']})
-                self.send('host_review', purpose='receipt', detail=json.dumps(result, indent=2), label='',
+                row['receiptLookup'] = result
+                self.store.journal(request['id'], row)
+                self.store.save()
+                self.send('host_review', purpose='receipt', detail=json.dumps({'original': row, 'hostReceipt': result}, indent=2), label='',
                           open_target=(result or {}).get('result', {}).get('uri') if row['operation'] == 'fork' else None)
                 return True, 'Original receipt inspected; no mutation replay'
-            except (OSError, ValueError, TimeoutError, KeyError) as exc:
-                return False, 'Optional capability unavailable: ' + str(exc) + '; core conversation retained'
+            except (OSError, ValueError, TimeoutError, KeyError):
+                return False, 'This action is not available right now. Keep your draft and use Original receipts to inspect a previous change.'
         if op == 'deliveries':
             self.send('deliveries', entries=[{'id': key, **row} for key, row in self.store.data['outbox'].items()
                                              if row.get('session') == target])
@@ -450,7 +547,7 @@ class UnifiedBridge:
         if self.deleted:
             return False, 'Conversation removed; use New or Resume to choose another'
         if op not in {'submit', 'stop', 'decision', 'rename', 'continue_here', 'retry_delivery'}:
-            return False, 'This standalone control is not supported by the connected client; use Unified web controls'
+            return False, 'This action is not available in this conversation. Your draft is kept; check the available Actions.'
         async with self.submission_lock if op == 'submit' and target is None else _Unlocked():
             if op == 'submit' and target != self.selected:
                 return False, 'Selection changed; text retained, nothing sent'

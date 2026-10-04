@@ -9,6 +9,8 @@ pub(super) enum Action {
     Conversations,
     Deliveries,
     HostReview(String),
+    SettingOptions(String),
+    SettingSet(String, Value),
     HostApply(String, String),
     HostEffects,
     Workspaces(usize, String),
@@ -314,7 +316,13 @@ impl App {
             choices
                 .into_iter()
                 .filter(|c| {
-                    matches!(
+                    let advertised = match &c.action {
+                        Action::HostReview(purpose) => self.ui.commands.contains(&format!("/{purpose}")),
+                        Action::Workspaces(_, _) => self.ui.commands.contains(&"/workspaces".into()),
+                        Action::Models => self.ui.commands.contains(&"/settings".into()),
+                        _ => true,
+                    };
+                    advertised && matches!(
                         c.action,
                         Action::Menu
                             | Action::Help
@@ -322,8 +330,8 @@ impl App {
                             | Action::Conversations
                             | Action::Switch(_)
                             | Action::Rename
-                            | Action::ContinueHere
                             | Action::Deliveries
+                            | Action::Models
                             | Action::HostReview(_)
                             | Action::HostEffects
                             | Action::Workspaces(_, _)
@@ -456,7 +464,7 @@ impl App {
                     choice("Selected native details — passive inspection", Action::HostReview("details".into())),
                     choice("Independent recovery copy — review source first", Action::HostReview("recovery".into())),
                     choice("Managed files — review owned files before disposal", Action::HostReview("managed-files".into())),
-                    choice("Original recovery and file receipts — never replay", Action::HostEffects),
+                    choice("Original receipts — inspect changes without resending", Action::HostEffects),
                     choice("Branch conversation — list captured turns (insert unsent)", Action::CommandDraft("/fork".into())),
                     choice("Clear context and goal — keep conversation history", Action::ClearContext),
                     choice("Export structured observations — private JSON", Action::ExportJson),
@@ -490,7 +498,7 @@ impl App {
                     choice("Recipe files — browse local definitions (not active runs)", Action::Inspect("recipe_files".into(), None)),
                     choice("Recovered work — historical child and action evidence", Action::Inspect("recovery".into(), None)),
                     choice("Change and command evidence — agent, call and source versions", Action::Inspect("changes".into(), None)),
-                    choice("Model catalog — discover configured providers' model IDs", Action::Models),
+                    choice(if self.connected { "Model and settings — change offered conversation options" } else { "Model catalog — discover configured providers' model IDs" }, Action::Models),
                     choice("New provider composition — fork captured public context", Action::ForkComposition),
                     choice("Pending follow-ups — inspect / pause / run / remove", Action::QueueList),
                     choice("Corrections — inspect insertion status / copy text", Action::Corrections),
@@ -624,6 +632,12 @@ impl App {
             },
             Action::ConversationPage(offset, query) => self.conversation_page(offset, query),
             Action::FindSaved => self.prompt("Search saved conversations"),
+            Action::SettingOptions(property) => self.send(json!({"op":"setting_choices","property":property})),
+            Action::SettingSet(property, value) => {
+                self.ui.menu = None;
+                self.send(json!({"op":"setting_set","property":property,"value":value}));
+            }
+            Action::Models if self.connected => self.send(json!({"op":"settings"})),
             Action::Models => {
                 self.menu("Model catalog · explicit discovery", vec![choice("Query configured providers (may contact their services)", Action::DiscoverModels)]);
                 self.ui.menu.as_mut().unwrap().detail = "Queries module-reported model catalogs, not a model completion. Does not change providers, models, credentials, routing or the draft. Catalogs may be static; access is not validated.".into();
@@ -1362,6 +1376,7 @@ impl App {
             "/skills" => Some(Action::Section("Skills (".into())),
             "/providers" => Some(Action::Providers),
             "/questions" => Some(Action::Questions),
+            "/settings" | "/models" => Some(Action::Models),
             "/modes" => Some(Action::Modes),
             "/export" | "/save" => Some(Action::Export),
             "/scrollback" => Some(Action::NativeScrollback),

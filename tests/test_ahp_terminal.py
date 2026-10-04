@@ -112,3 +112,54 @@ async def test_actual_terminal_long_stream_remains_responsive_and_exact(ahp_host
         assert len(log.read_text().splitlines()) == 1
     finally:
         await asyncio.to_thread(probe.close)
+
+
+async def test_actual_terminal_standard_model_picker_keeps_private_draft(ahp_host):
+    import json
+    import uuid
+
+    from amplifier_tui.unified_transport import Transport
+    url, root, prompt_log = ahp_host
+    transport = Transport(url, '', 'model-fixture-setup')
+    await transport.open()
+    identity = 'ahp-session:/' + str(uuid.uuid4())
+    await transport.rpc('create', session=identity, cwd=root.as_uri(), provider='fixture')
+    await transport.close()
+    executable = os.environ.get('TUI_CONNECTED_EXECUTABLE')
+    launcher = [executable] if executable else [sys.executable, '-m', 'amplifier_tui.connected']
+    probe = Probe([*launcher, '--server', url, '--workspace', str(root), '--state-dir', str(root / 'model-terminal'),
+                   '--client', 'model-picker', '--session', identity], 120, 40, guard_terminal_modes=True,
+                  env={'PYTHONPATH': ''} if executable else None)
+    try:
+        await displayed([probe], lambda: 'UNIFIED' in probe.text)
+        probe.send(b'/settings\r')
+        await displayed([probe], lambda: 'Model and conversation settings' in probe.text and 'OpenAI / gpt-6-sol' in probe.text)
+        probe.send(b'\r')
+        await displayed([probe], lambda: 'Choose Model' in probe.text and 'gpt-6-astra' in probe.text)
+        probe.send(b'gpt-6-astra\r')
+        await displayed([probe], lambda: 'Model and conversation settings' in probe.text and 'OpenAI / gpt-6-astra' in probe.text)
+        probe.send(b'\x1b[27u')
+        await displayed([probe], lambda: 'Model and conversation settings' not in probe.text)
+        probe.send(b'/settings\r')
+        await displayed([probe], lambda: 'Model and conversation settings' in probe.text)
+        probe.send(b'\r')
+        await displayed([probe], lambda: 'Choose Model' in probe.text)
+        probe.send(b'Fixture model 2\r')
+        await displayed([probe], lambda: 'declined the setting change' in probe.text)
+        assert 'RPC' not in probe.text and 'needs-confirmation' not in probe.text
+        probe.send(b'\x1b[27u')
+        await displayed([probe], lambda: 'Model and conversation settings' not in probe.text)
+        probe.send(b'Private unsent draft after model change')
+        await displayed([probe], lambda: 'Private unsent draft' in probe.text)
+        await asyncio.sleep(.3)
+        state = json.loads((root / 'model-terminal/connections/model-picker.json').read_text())
+        assert state['drafts'][identity] == 'Private unsent draft after model change'
+        assert [row['status'] for row in state['configEffects'].values()] == ['confirmed', 'refused']
+        assert len((root / 'settings.jsonl').read_text().splitlines()) == 2
+        assert not prompt_log.exists()
+        evidence = Path(os.environ.get('TUI_EVIDENCE_DIR', root))
+        evidence.mkdir(parents=True, exist_ok=True)
+        (evidence / 'model-picker-terminal.txt').write_text(probe.text)
+        (evidence / 'model-picker-terminal.ansi').write_bytes(bytes(probe.raw))
+    finally:
+        await asyncio.to_thread(probe.close)

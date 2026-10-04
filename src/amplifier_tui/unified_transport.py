@@ -381,7 +381,7 @@ class Transport:
                    'messages': [{'id': t['id'], 'inputId': t['id'], 'role': 'assistant' if t['message'].get('origin', {}).get('kind') == 'agent' else 'user', 'text': t['message'].get('text', ''), 'delivery': {'status': 'accepted'}} for t in turns],
                    'displayItems': [item for key in chat['order'] for item in chat['items'][key]],
                    'approvals': approvals, 'sharedHistoryOffset': 1 if chat.get('turnsNextCursor') else 0,
-                   'historyCursor': chat.get('turnsNextCursor'), 'error': chat.get('error')}
+                   'historyCursor': chat.get('turnsNextCursor'), 'config': source.get('config') or {}, 'error': chat.get('error')}
         return {'protocolVersion': 1, 'hostInstanceId': str(self.generation), 'revision': self.revision, 'session': session}
 
     async def snapshot(self, identity):
@@ -418,6 +418,8 @@ class Transport:
             if not snapshot['activeTurnId']:
                 raise Rejected(422, {'error': 'No active turn to cancel'})
             return await self.rpc('cancel', chat=chat, turnId=snapshot['activeTurnId'])
+        if action == 'session.configure':
+            return await self.rpc('configure', session=identity, config=args['config'])
         if action == 'session.rename':
             return await self.rpc('rename', session=identity, title=args['title'])
         if action == 'approval.respond':

@@ -6663,6 +6663,14 @@ async function command(method, p) {
   if (method === "toolComplete") return dispatch(p.chat, { type: "chat/toolCallComplete", turnId: p.turnId, toolCallId: p.toolCallId, result: p.result });
   if (method === "send") return dispatch(p.chat, { type: "chat/turnStarted", turnId: p.commandId, startedAt: (/* @__PURE__ */ new Date()).toISOString(), message: { text: p.text, origin: { kind: "user" } } });
   if (method === "cancel") return dispatch(p.chat, { type: "chat/turnCancelled", turnId: p.turnId, duration: 0 });
+  if (method === "refreshSession") {
+    if (p.session !== selected) throw Object.assign(new Error("Selection changed"), { rejected: true });
+    const result = await client.request("subscribe", { channel: p.session });
+    if (!result.snapshot) throw new Error("Host omitted selected snapshot");
+    baseline(result.snapshot);
+    return {};
+  }
+  if (method === "configure") return dispatch(p.session, { type: "session/configChanged", config: p.config });
   if (method === "rename") return dispatch(p.session, { type: "session/titleChanged", title: p.title });
   if (method === "decision") return dispatch(p.chat, { type: "chat/toolCallConfirmed", turnId: p.turnId, toolCallId: p.toolCallId, approved: p.approved, confirmed: "user-action", selectedOptionId: p.option });
   if (method === "history") return client.request("fetchTurns", { channel: p.chat, cursor: p.cursor });

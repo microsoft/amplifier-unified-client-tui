@@ -26,7 +26,7 @@ Receipts live in [acceptance notes](../notes/ACCEPTANCE.md).
    Broken: A sibling private import or vendor assumption is required for ordinary chat.
    Affected: people choosing their host and agent implementations.
 
-2. **Honor declared capability.** Configuration and optional controls appear only through advertised, versioned capabilities. Unknown required configuration is not guessed or reset. Credential/authentication ownership remains outside private client drafts and transcripts.
+2. **Honor declared capability.** Standard mutable session configuration uses its advertised schema and offered values; optional controls appear only through advertised, versioned capabilities. A refused change, pending confirmation and an unknown outcome have distinct messages. Exact diagnostic evidence remains inspectable while ordinary messages explain the next safe action. Unknown required configuration is not guessed or reset. Credential/authentication ownership remains outside private client drafts and transcripts.
    Broken: The client offers a control whose semantics it cannot honor or copies provider credentials.
    Affected: operators and independent capability owners.
 

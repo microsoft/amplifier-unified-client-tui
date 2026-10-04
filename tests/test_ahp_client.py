@@ -25,7 +25,7 @@ async def ahp_host(tmp_path):
     config.write_text(json.dumps({'stateDirectory': str(tmp_path / 'host'), 'port': 0,
         'allowedWorkspaceRoots': [str(tmp_path)], 'engines': [{'id': 'fixture', 'label': 'ACP Fixture',
         'command': 'node', 'args': [str(ROOT / 'tests/fixtures/acp_agent.mjs')],
-        'env': {'FIXTURE_LOG': str(log)}}]}))
+        'env': {'FIXTURE_LOG': str(log), 'FIXTURE_MODELS': '1', 'FIXTURE_CONFIG_LOG': str(tmp_path / 'settings.jsonl')}}]}))
     entry = str(ROOT / 'tests/fixtures/ahp_fixture_host.mjs') if os.environ.get('AHP_HOST_MODULE') else ENTRY
     process = await asyncio.create_subprocess_exec('node', entry, '--config', str(config),
         stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
@@ -231,3 +231,70 @@ async def test_long_stream_local_ipc_is_linear_and_reconnect_restores_exact_text
         assert any(i['text'] == expected for i in a.items())
     finally:
         await a.close()
+
+
+async def test_standard_model_settings_confirm_refusal_unknown_and_receipt_no_replay(ahp_host):
+    url, root, prompt_log = ahp_host
+    transport = Transport(url, '', 'standard-config')
+    await transport.open()
+    identity = 'ahp-session:/' + str(uuid.uuid4())
+    await transport.rpc('create', session=identity, cwd=root.as_uri(), provider='fixture')
+    events = []
+    bridge = UnifiedBridge(events.append, transport, ClientState(root / 'config-client', url, 'standard-config'), session=identity)
+    try:
+        await bridge.open()
+        await bridge.dispatch(request(bridge, 'draft', text='Private model-change draft'))
+        assert (await bridge.dispatch(request(bridge, 'settings')))[0]
+        assert (await bridge.dispatch(request(bridge, 'setting_choices', property='model')))[0]
+        choices = next(e for e in reversed(events) if e['type'] == 'setting_choices')
+        assert len(choices['choices']) == 9
+        assert choices['current'] == 'openai/gpt-6-sol'
+        assert (await bridge.dispatch(request(bridge, 'setting_set', property='model', value='openai/gpt-6-astra')))[0]
+        assert bridge.session['config']['values']['model'] == 'openai/gpt-6-astra'
+        refused = await bridge.dispatch(request(bridge, 'setting_set', property='model', value='fixture/model-2'))
+        assert not refused[0] and 'declined' in refused[1] and 'RPC' not in refused[1]
+        assert list(bridge.store.data['configEffects'].values())[-1]['status'] == 'refused'
+        original = transport.command
+        async def lost_result(*args, **kwargs):
+            await original(*args, **kwargs)
+            raise OSError('Simulated lost result after actual installed host applied setting')
+        transport.command = lost_result
+        unknown = await bridge.dispatch(request(bridge, 'setting_set', property='model', value='fixture/model-3'))
+        assert not unknown[0] and 'not confirmed' in unknown[1]
+        effect_id, effect = list(bridge.store.data['configEffects'].items())[-1]
+        assert effect['status'] == 'unknown'
+        transport.command = original
+        count = len((root / 'settings.jsonl').read_text().splitlines())
+        assert (await bridge.dispatch(request(bridge, 'host_receipt', id=effect_id)))[0]
+        assert len((root / 'settings.jsonl').read_text().splitlines()) == count == 3
+        assert effect['status'] == 'unknown'  # Current readback does not prove the original outcome.
+        assert bridge.store.data['drafts'][identity] == 'Private model-change draft'
+        assert not prompt_log.exists()  # Configuration never submits a model prompt.
+        commands = next(e for e in reversed(events) if e['type'] == 'commands')['commands']
+        assert '/settings' in commands
+        assert 'message.reply' not in commands and 'message.reaction' not in commands
+        for op in ('message.reply', 'message.reaction'):
+            unavailable = await bridge.dispatch(request(bridge, op))
+            assert not unavailable[0] and 'not available' in unavailable[1]
+        assert len((root / 'settings.jsonl').read_text().splitlines()) == count
+        bridge.store.data['hostEffects'] = {'saved-copy': {'session': identity, 'operation': 'fork', 'args': {'commandId': 'saved-copy'}, 'status': 'unknown', 'error': 'RPC -32011: Indexed family coverage is incomplete or stale'}}
+        original_lifecycle = transport.lifecycle
+        async def lookup_unavailable(*args, **kwargs):
+            raise OSError('Receipt lookup is temporarily unavailable')
+        transport.lifecycle = lookup_unavailable
+        inspected = await bridge.dispatch(request(bridge, 'host_receipt', id='saved-copy'))
+        assert not inspected[0] and 'RPC' not in inspected[1]
+        details = next(e for e in reversed(events) if e['type'] == 'host_review')['detail']
+        assert 'Indexed family coverage' in details and 'saved-copy' in details
+        assert bridge.store.data['hostEffects']['saved-copy']['status'] == 'unknown'
+        assert len((root / 'settings.jsonl').read_text().splitlines()) == count
+        transport.lifecycle = original_lifecycle
+        transport.attached = {}
+        bridge.publish_controls()
+        controls = next(e for e in reversed(events) if e['type'] == 'commands')['commands']
+        assert '/details' not in controls and '/recovery' not in controls and '/managed-files' not in controls
+        bridge.session['config'] = {'schema': {'properties': {'model': {'enum': ['read-only'], 'sessionMutable': False}}}}
+        bridge.publish_controls()
+        assert '/settings' not in next(e for e in reversed(events) if e['type'] == 'commands')['commands']
+    finally:
+        await bridge.close()
