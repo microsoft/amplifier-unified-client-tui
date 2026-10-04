@@ -57,6 +57,47 @@ async def view(root, url, *, session=None, identity=None):
     return bridge, events
 
 
+async def test_selected_chat_never_requests_warm_but_explicit_send_runs(ahp_host, monkeypatch):
+    url, root, log = ahp_host
+    actions, command = Transport.actions, Transport.command
+    commands = []
+
+    async def offered(transport):
+        return set(await actions(transport)) | {'session.warm'}
+
+    async def observed(transport, session, action, args, identity):
+        commands.append((session, action))
+        return await command(transport, session, action, args, identity)
+
+    monkeypatch.setattr(Transport, 'actions', offered)
+    monkeypatch.setattr(Transport, 'command', observed)
+    a, _ = await view(root / 'a', url)
+    b = None
+    try:
+        assert (await a.dispatch(request(a, 'submit', text='seed on demand')))[0]
+        await wait_for(lambda: any(i['text'] == 'Echo: seed on demand' for i in a.items()))
+        b, _ = await view(root / 'b', url, session=a.selected)
+        await b.dispatch(request(b, 'draft', text='private retained draft'))
+        assert (await b.dispatch(request(b, 'switch', target=a.selected, draft='private retained draft')))[0]
+        if b.tasks:
+            await asyncio.gather(*list(b.tasks))
+        if a.tasks:
+            await asyncio.gather(*list(a.tasks))
+        assert not any(action == 'session.warm' for _, action in commands)
+        assert len(log.read_text().splitlines()) == 1
+        assert b.store.data['drafts'][a.selected] == 'private retained draft'
+        assert any(i['text'] == 'Echo: seed on demand' for i in b.items())
+        assert (await b.dispatch(request(b, 'submit', text='explicit next prompt')))[0]
+        await wait_for(lambda: any(i['text'] == 'Echo: explicit next prompt' for i in b.items()))
+        assert len(log.read_text().splitlines()) == 2
+        assert sum(action == 'conversation.send' for _, action in commands) == 2
+        assert not any(action == 'session.warm' for _, action in commands)
+    finally:
+        await a.close()
+        if b:
+            await b.close()
+
+
 async def test_two_ahp_clients_local_drafts_streaming_and_reconnect_no_replay(ahp_host):
     url, root, log = ahp_host
     a, _ = await view(root / 'a', url)
