@@ -1,7 +1,7 @@
 // Protocol semantics belong to upstream AHP; this sidecar owns only local presentation delivery.
 import { AhpClient } from '@microsoft/agent-host-protocol/client';
 import { WebSocketTransport } from '@microsoft/agent-host-protocol/ws';
-import { chatReducer, sessionReducer, rootReducer } from '@microsoft/agent-host-protocol';
+import { chatReducer, sessionReducer, rootReducer, resourceWatchReducer } from '@microsoft/agent-host-protocol';
 import WebSocket from 'ws';
 import { createHash } from 'node:crypto';
 import { createInterface } from 'node:readline';
@@ -9,10 +9,11 @@ import { readFileSync } from 'node:fs';
 
 const ROOT='ahp-root://';
 let config,client,socket,selected,chatURI,sequence=0,online=false,closing=false,connecting;
-let generation=0,initialized,gate=[],ready=false;
+let generation=0,initialized,gate=[],ready=false,messageWatch;
 const states=new Map(), cuts=new Map(), waiting=new Map(), offered=new Set();
 function output(packet){const line=JSON.stringify(packet)+'\n';if(Buffer.byteLength(line)>32*1024*1024||process.stdout.writableLength>16*1024*1024){process.stderr.write('Protocol presentation capacity exceeded; no commands replayed\n');process.exit(2);}process.stdout.write(line);}
 function publish(uri, action){const state=states.get(uri);if(!state)return;
+  if(uri===messageWatch?.channel&&action?.type==='resourceWatch/changed'){void readMessageWatch(messageWatch);return;}
   if(uri===ROOT){output({event:'root',state});return;}
   if(uri.startsWith('ahp-session:')){output({event:'session',uri,state});return;}
   if(uri.startsWith('ahp-chat:')){
@@ -33,7 +34,7 @@ function apply(envelope){
   if(origin?.clientId===config.clientId){const pending=waiting.get(origin.clientSeq);if(pending){waiting.delete(origin.clientSeq);clearTimeout(pending.timer);rejectionReason?pending.reject(Object.assign(new Error(rejectionReason),{rejected:true})):pending.resolve({accepted:true});}}
   if(rejectionReason)return;
   const state=states.get(channel);if(!state)return;
-  const reducer=channel===ROOT?rootReducer:channel.startsWith('ahp-chat:')?chatReducer:sessionReducer;
+  const reducer=channel===ROOT?rootReducer:channel.startsWith('ahp-chat:')?chatReducer:channel.startsWith('ahp-resource-watch:')?resourceWatchReducer:sessionReducer;
   states.set(channel,reducer(state,action));publish(channel,action);
 }
 async function connect(recover=false){
@@ -56,7 +57,7 @@ async function connect(recover=false){
       sequence=initialized.serverSeq;
     }
     ready=true;for(const item of gate)consume(item);gate=[];online=true;
-    output({event:'connection',online:true,generation,initialized});output({event:'catalogInvalidated'});if(selected){await optionalTools();publish(chatURI);}
+    output({event:'connection',online:true,generation,initialized});output({event:'catalogInvalidated'});if(selected){await optionalTools();await optionalMessageWatch();publish(chatURI);}
     // Every reconnect clears protocol pending writes. Durable input is reconciled separately.
     void(async()=>{for await(const state of client.stateChanges()){if(state.status==='closed'&&current===generation&&!closing){online=false;output({event:'connection',online:false,generation});for(const pending of waiting.values()){clearTimeout(pending.timer);pending.reject(new Error('Disconnected; command outcome unknown'));}waiting.clear();setTimeout(()=>retry(),250);}}})();
     return initialized;
@@ -68,6 +69,43 @@ async function retry(){if(closing)return;try{await connect(true);retryDelay=250;
 async function subscribe(uri,view){const result=await client.subscribe(uri,{view,delivery:{maxBatchDelayMs:30}});if(!result.result.snapshot)throw new Error('Host omitted required snapshot');baseline(result.result.snapshot);}
 async function dispatch(channel,action){if(!online)throw new Error('Offline; nothing automatically retried');const handle=client.dispatch(channel,action);return new Promise((resolve,reject)=>{const timer=setTimeout(()=>{waiting.delete(handle.clientSeq);reject(new Error('Action echo unavailable; outcome unknown'));},15000);waiting.set(handle.clientSeq,{resolve,reject,timer});});}
 async function optionalTools(){try{await registerTools();}catch{output({event:'optionalUnavailable',capability:'client-tools',message:'Terminal agent UI registration unavailable; core conversation retained'});}}
+function messageURI(scope){
+ const topic=initialized?._meta?.['amplifier.dev/capabilities']?.topics?.['message-metadata'];
+ if(topic?.version!==1||!topic.uri)return;
+ const uri=new URL(topic.uri);uri.searchParams.set('scope',scope);return {uri:uri.href,watch:topic.watch===true};
+}
+async function messageRecord(scope,uri){
+ const result=await client.request('resourceRead',{channel:ROOT,uri,encoding:'utf-8'});
+ if(result.encoding!=='utf-8'||result.contentType!=='application/json')throw new Error('Invalid message representation');
+ const record=JSON.parse(result.data);
+ if(record.topic!=='message-metadata'||record.scope!==scope||!Number.isSafeInteger(record.revision)||record.revision<0||!record.data||typeof record.data!=='object')throw new Error('Message response changed scope');
+ return record;
+}
+async function stopMessageWatch(){
+ const prior=messageWatch;messageWatch=undefined;
+ if(prior){states.delete(prior.channel);cuts.delete(prior.channel);await client.unsubscribe(prior.channel);}
+}
+async function readMessageWatch(watch){
+ if(watch!==messageWatch||watch.scope!==selected)return;
+ watch.dirty=true;if(watch.pending)return watch.pending;
+ const connection=client;
+ watch.pending=(async()=>{try{
+  do{watch.dirty=false;const record=await messageRecord(watch.scope,watch.uri);
+   if(watch!==messageWatch||watch.scope!==selected||client!==connection)return;
+   if(record.revision>(watch.revision??-1)){watch.revision=record.revision;output({event:'messageMetadata',generation,scope:watch.scope,record});}
+  }while(watch.dirty);
+ }catch{if(watch===messageWatch)output({event:'optionalUnavailable',capability:'message-watch',message:'Shared reaction updates unavailable; reopen Inspect for current counts. Original receipts retained.'});}
+ finally{watch.pending=undefined;}})();return watch.pending;
+}
+async function optionalMessageWatch(){
+ try{
+  await stopMessageWatch();const topic=selected&&messageURI(selected);if(!topic?.watch)return;
+  const scope=selected,connection=client,result=await client.createResourceWatch({uri:topic.uri,recursive:false});
+  if(scope!==selected||connection!==client){await connection.unsubscribe(result.channel);return;}
+  messageWatch={scope,uri:topic.uri,channel:result.channel};
+  await subscribe(result.channel);await readMessageWatch(messageWatch);
+ }catch{output({event:'optionalUnavailable',capability:'message-watch',message:'Shared reaction updates unavailable; reopen Inspect for current counts. Original receipts retained.'});}
+}
 async function registerTools(){
   const suffix=createHash('sha256').update(config.clientId).digest('hex').slice(0,16);
   await dispatch(selected,{type:'session/activeClientSet',activeClient:{clientId:config.clientId,displayName:'Amplifier Unified TUI',tools:[
@@ -88,9 +126,9 @@ async function command(method,p){
     try{await subscribe(nextChat,{turns:50});}catch(error){await client.unsubscribe(p.session);states.delete(p.session);throw error;}
     selected=p.session;chatURI=nextChat;
     for(const uri of [prior,priorChat])if(uri&&uri!==selected&&uri!==chatURI){await client.unsubscribe(uri);states.delete(uri);cuts.delete(uri);}
-    await optionalTools();publish(chatURI);return {session:selected,chat:chatURI};
+    await optionalTools();await optionalMessageWatch();publish(chatURI);return {session:selected,chat:chatURI};
   }
-  if(method==='detach'){for(const uri of [selected,chatURI])if(uri){await client.unsubscribe(uri);states.delete(uri);cuts.delete(uri);}selected=chatURI=undefined;return {};}
+  if(method==='detach'){await stopMessageWatch();for(const uri of [selected,chatURI])if(uri){await client.unsubscribe(uri);states.delete(uri);cuts.delete(uri);}selected=chatURI=undefined;return {};}
   if(method==='capability'){
     const manifest=initialized?._meta?.['amplifier.dev/capabilities'];
     const action=manifest?.version===1?manifest.actions?.[p.action]:undefined;
@@ -99,12 +137,8 @@ async function command(method,p){
   }
   if(method==='messageDescriptor'){
     if(p.session!==selected)throw Object.assign(new Error('Selection changed'),{rejected:true});
-    const topic=initialized?._meta?.['amplifier.dev/capabilities']?.topics?.['message-metadata'];
-    if(topic?.version!==1||!topic.uri)throw Object.assign(new Error('Message metadata unavailable'),{rejected:true});
-    const uri=new URL(topic.uri);uri.searchParams.set('scope',p.session);
-    const result=await client.request('resourceRead',{channel:ROOT,uri:uri.href,encoding:'utf-8'});
-    if(result.encoding!=='utf-8'||result.contentType!=='application/json')throw new Error('Invalid message representation');
-    const record=JSON.parse(result.data);if(record.topic!=='message-metadata'||record.scope!==p.session)throw new Error('Message response changed scope');return record.data;
+    const topic=messageURI(p.session);if(!topic)throw Object.assign(new Error('Message metadata unavailable'),{rejected:true});
+    return (await messageRecord(p.session,topic.uri)).data;
   }
   if(method==='managed'){
     const cap=initialized?._meta?.['amplifier.dev/managedCreation'];

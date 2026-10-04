@@ -46,3 +46,11 @@ separate from native execution, and no unknown submission was replayed.
 Canonical-reference setup uses the offered explicit selected history refresh when a
 fresh fixture's settled marker has not reached the initial snapshot. This does not
 establish general historical-marker publication or new live worker adoption.
+
+The reaction-watch successor passed 125 Python checks with 7 gated skips, 79 Rust
+checks and 5 installed standard-host terminal checks. Exact installed Python and
+message-capable terminal checks passed 3 tests in 19.04 seconds, covering live
+other-client counts in the actual PTY, watch recreation after disconnect, monotonic
+scope/generation guards, visible unknown intent until exact receipt, and the inherited
+stale-digest frozen original inspection/copy repair. Source/private intent and installed
+package evidence remain separate from live deployment or real-account acceptance.

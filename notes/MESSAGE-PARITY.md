@@ -28,9 +28,8 @@ must preserve intent and refuse unsafe action.
 
 Coverage boundary: local deterministic installed native/provider fixtures establish
 protocol and terminal behavior. They do not establish live Spark, release adoption,
-physical devices or real provider/account acceptance. Shared counts are snapshots from
-explicit reads and confirmed changes; automatic message metadata watch is not yet
-mapped in the terminal. Managed bundle/provider/model/effort launch flags and the
+physical devices or real provider/account acceptance. Shared counts update through explicit reads, confirmed changes and one selected
+public capability watch; watches never settle original uncertain requests. Managed bundle/provider/model/effort launch flags and the
 standard mutable settings picker already shipped and are not new work in this change.
 
 Independent review found host admission could precede native stale-digest refusal,
@@ -42,3 +41,19 @@ and offline. Original text/quote remain recoverable as private evidence; neither
 inspection nor subsequent host observations overwrites newer drafts/quotes or resends
 work. The stale digest fixture asserts native refusal and no provider execution, while
 the frozen original retains its source excerpt and deliberately stale locator.
+
+Follow-on watch audit: the web implementation uses public `createResourceWatch`,
+standard `resourceWatch/changed`, and scoped capability `resourceRead`. The upstream
+SDK owns resource-watch state/recovery. The native capability owner publishes only
+bounded changed-message metadata. The follow-on maps one selected watch, coalesces reads, validates original scope and
+monotonic revisions, and releases/re-establishes subscriptions without replay.
+
+Independent b55 installed review found initial watch metadata arriving before
+Python committed a returning selection. Preserve that red candidate; qualify a
+bounded selection handoff with return, competing selection and cancellation
+controls. No polling or unknown command replay is authorized by this repair.
+
+Independent 63c installed review found reconnect during pending selection dropped
+the new-generation initial watch record. Preserve 63c/de1a and its review failure;
+qualify explicit generation-stamped packets and same-selection bounded rebind,
+including lower resource revision after reconnect and stale packet rejection.

@@ -124,6 +124,22 @@ async def test_installed_public_bridge_private_quote_actual_freeze_and_exact_unk
         other_message = next(row for row in other.session['messages'] if (row.get('messageReference') or {}).get('messageId') == message['messageReference']['messageId'])
         assert (await other.dispatch(request(other, 'message.reaction', message_id=other_message['id'], emoji='👍', present=False)))[0]
         assert (await other.dispatch(request(other, 'message.reaction', message_id=other_message['id'], emoji='✅', present=True)))[0]
+        async with asyncio.timeout(20):
+            while bridge.messages.rows[(session, message['messageReference']['messageId'])]['mine'] != ['✅']:
+                await asyncio.sleep(.02)
+        assert bridge.store.data['messageEffects'][command]['status'] == 'unknown'
+        generation = bridge.transport.generation
+        await bridge.transport.rpc('disconnect')
+        await wait_for(lambda: bridge.transport.online and bridge.transport.generation > generation)
+        assert bridge.store.data['messageEffects'][command]['status'] == 'unknown'
+        assert (await other.dispatch(request(other, 'message.reaction', message_id=other_message['id'], emoji='🎉', present=True)))[0]
+        async with asyncio.timeout(20):
+            while '🎉' not in bridge.messages.rows[(session, message['messageReference']['messageId'])]['mine']:
+                await asyncio.sleep(.02)
+        assert (await other.dispatch(request(other, 'message.reaction', message_id=other_message['id'], emoji='🎉', present=False)))[0]
+        async with asyncio.timeout(20):
+            while bridge.messages.rows[(session, message['messageReference']['messageId'])]['mine'] != ['✅']:
+                await asyncio.sleep(.02)
         await bridge.close()
         bridge, events = await open_bridge(url, root, workspace, 'one', session)
         current = next(row for row in bridge.session['messages'] if (row.get('messageReference') or {}).get('messageId') == message['messageReference']['messageId'])
@@ -209,6 +225,11 @@ async def test_actual_installed_terminal_quote_reload_reactions_missing_ref_and_
         # protocol frames below prove these interactions admitted no extra turn.
         observer, _ = await open_bridge(url, root, workspace, 'observer', session)
         try:
+            await wait_for(lambda: not observer.messages.refreshing)
+            shared = next(row for row in observer.session['messages'] if (row.get('messageReference') or {}).get('messageId') == message['messageReference']['messageId'])
+            assert (await observer.dispatch(request(observer, 'message.reaction', message_id=shared['id'], emoji='👍', present=False)))[0]
+            assert (await observer.dispatch(request(observer, 'message.reaction', message_id=shared['id'], emoji='✅', present=True)))[0]
+            await displayed([probe], lambda: 'Reactions · ✅' in probe.text)
             # Missing references refuse locally and never clear either private draft.
             refused = await observer.dispatch(request(observer, 'message.reply', message_id='missing'))
             assert not refused[0] and not observer.messages.quote()

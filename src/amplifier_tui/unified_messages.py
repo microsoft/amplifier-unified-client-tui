@@ -52,6 +52,9 @@ class Messages:
         self.refreshing = set()
         self.preview_key = None
         self.descriptors = {}
+        self.record_revisions = {}
+        self.selection_pending = None
+        self.selection_record = None
 
     def quote_supported(self):
         descriptor = self.descriptors.get(self.bridge.selected)
@@ -244,6 +247,67 @@ class Messages:
             if self.bridge.selected == target:
                 self.bridge.send('system', lines=['Saved message references are unavailable. Open Messages and refresh saved messages; your draft is kept.'])
 
+    def begin_selection(self, scope):
+        token = object()
+        self.selection_pending = (token, scope, getattr(self.bridge.transport, 'generation', 0))
+        self.selection_record = None
+        return token
+
+    def finish_selection(self, token, *, committed=False):
+        pending = self.selection_pending
+        if not pending or pending[0] is not token:
+            return
+        packet = self.selection_record
+        self.selection_pending = self.selection_record = None
+        if (committed and packet and pending[1] == self.bridge.selected
+                and pending[2] == getattr(self.bridge.transport, 'generation', 0)):
+            self.accept(packet)
+
+    def accept(self, packet):
+        scope, record = packet.get('scope'), packet.get('record')
+        pending = self.selection_pending
+        generation = getattr(self.bridge.transport, 'generation', 0)
+        if packet.get('generation', generation) != generation:
+            return
+        if (scope != self.bridge.selected and not (pending and pending[1] == scope)) or not isinstance(record, dict):
+            return
+        revision, data = record.get('revision'), record.get('data')
+        key = (scope, generation)
+        if (record.get('scope') != scope or record.get('topic') != 'message-metadata'
+                or type(revision) is not int or revision < 0 or not isinstance(data, dict)
+                or revision <= self.record_revisions.get(key, -1)):
+            return
+        if pending and pending[1] == scope:
+            if pending[2] != generation:
+                # A fresh connection may finish the same pending selection.
+                # Its initial record replaces the old lifetime's buffer.
+                self.selection_pending = (pending[0], scope, generation)
+                self.selection_record = None
+            prior = self.selection_record
+            if prior is None or revision > prior['record']['revision']:
+                self.selection_record = deepcopy(packet)
+            return
+        self.record_revisions[key] = revision
+        if len(self.record_revisions) > 32:
+            self.record_revisions.pop(next(iter(self.record_revisions)))
+        if isinstance(data.get('quote'), dict):
+            self.descriptors[scope] = data
+            if len(self.descriptors) > 32:
+                self.descriptors.pop(next(iter(self.descriptors)))
+        changed = data.get('changedMessage')
+        if isinstance(changed, dict):
+            locator = next((reference(row.get('messageReference'), reaction=True)
+                            for row in self.bridge.session.get('messages', [])
+                            if isinstance(row.get('messageReference'), dict)
+                            and row['messageReference'].get('messageId') == changed.get('messageId')
+                            and not row.get('historicalOnly')), None)
+            if locator:
+                try:
+                    self.merge(scope, changed, locator)
+                except ValueError:
+                    return
+        self.bridge.publish()
+
     def merge(self, scope, value, locator):
         row = reaction_row(value)
         if row['sessionId'] != locator['sessionId'] or row['messageId'] != locator['messageId']:
@@ -257,6 +321,7 @@ class Messages:
 
     def decorate(self, items):
         result = []
+        pending = [item for item in self.effects().items() if item[1]['session'] == self.bridge.selected and item[1]['status'] == 'unknown']
         for item in items:
             result.append(item)
             locator = reference(item.get('reference'), reaction=True)
@@ -265,6 +330,12 @@ class Messages:
                 result.append({'id': 'reaction:' + item['id'], 'kind': 'notice', 'text': 'Reactions · ' + ' · '.join(
                     emoji + ' ' + str(row['counts'][emoji]) + (' · yours' if emoji in row['mine'] else '')
                     for emoji in row['reactions']), 'status': '', 'detail': ''})
+            if locator:
+                for command, effect in pending:
+                    if effect['args']['reference']['messageId'] == locator['messageId']:
+                        result.append({'id': 'message-effect:' + command, 'kind': 'notice',
+                                       'text': 'Reaction request pending' if command in self.running else 'Reaction is not confirmed · inspect Original receipts; nothing will be repeated',
+                                       'status': 'pending' if command in self.running else 'unknown', 'detail': command})
         return result
 
     async def read(self, identity):
@@ -351,5 +422,6 @@ class Messages:
         b.store.save()
         # Original evidence is not a current-state read and cannot replace newer counts.
         if b.selected == effect['session']:
+            b.publish()
             b.send('host_review', purpose='result', detail=json.dumps(value, ensure_ascii=False), label='')
         return True, 'Original reaction confirmed. Inspect shared reactions for current counts.'

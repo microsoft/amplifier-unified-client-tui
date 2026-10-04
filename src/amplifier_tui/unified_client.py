@@ -25,6 +25,7 @@ class UnifiedBridge:
         self.published_controls = None
         self.session = {}
         self.messages = Messages(self)
+        self.transport.message_metadata = self.messages.accept
         self.actions = set()
         self.pump = None
         self.tasks = set()
@@ -34,6 +35,7 @@ class UnifiedBridge:
         self.instance = None
         self.opened = False
         self.deleted = False
+        self.selection_lock = asyncio.Lock()
         self.switch_lock = asyncio.Lock()
         self.submission_lock = asyncio.Lock()
         self.retired_instances = set()
@@ -323,24 +325,33 @@ class UnifiedBridge:
                           status=f'Connection unavailable: {exc}; no work resent')
 
     async def select(self, identity, *, preserve_draft=False):
-        identity = await self.transport.resolve_session(identity, workspace=self.workspace)
-        snapshot = await self.transport.snapshot(identity)
-        if self.pump:
-            self.pump.cancel()
-            await asyncio.gather(self.pump, return_exceptions=True)
-        self.generation += 1
-        self.selected = identity
-        self.deleted = False
-        self.instance, self.revision = None, -1
-        self.session = snapshot['session']
-        self.store.data['session'] = identity
-        self.store.save()
-        self.online = True
-        self.initial(preserve_draft=preserve_draft)
-        self.reconcile(snapshot)
-        self.pump = asyncio.create_task(self.watch(identity, self.generation))
-        if 'session.warm' in self.actions:
-            self.later(self.warm(identity))
+        async with self.selection_lock:
+            identity = await self.transport.resolve_session(identity, workspace=self.workspace)
+            token = self.messages.begin_selection(identity)
+            try:
+                snapshot = await self.transport.snapshot(identity)
+                if self.pump:
+                    self.pump.cancel()
+                    await asyncio.gather(self.pump, return_exceptions=True)
+                self.generation += 1
+                self.selected = identity
+                self.deleted = False
+                self.instance, self.revision = None, -1
+                self.session = snapshot['session']
+                self.store.data['session'] = identity
+                self.store.save()
+                self.online = True
+                self.initial(preserve_draft=preserve_draft)
+                self.reconcile(snapshot)
+                self.messages.finish_selection(token, committed=True)
+                self.pump = asyncio.create_task(self.watch(identity, self.generation))
+                if 'session.warm' in self.actions:
+                    self.later(self.warm(identity))
+            except BaseException:
+                self.transport.selected = None
+                raise
+            finally:
+                self.messages.finish_selection(token)
 
     async def warm(self, identity):
         try:

@@ -6360,6 +6360,15 @@ function chatReducer(state, action, log) {
   }
 }
 
+// node_modules/@microsoft/agent-host-protocol/dist/types/channels-resource-watch/reducer.js
+function resourceWatchReducer(state, action, log) {
+  if (action.type === ActionType.ResourceWatchChanged) {
+    return state;
+  }
+  (log ?? console.warn)(`Unhandled action type: ${JSON.stringify(action)}`);
+  return state;
+}
+
 // node_modules/ws/wrapper.mjs
 var import_stream = __toESM(require_stream(), 1);
 var import_extension = __toESM(require_extension(), 1);
@@ -6389,6 +6398,7 @@ var generation = 0;
 var initialized;
 var gate = [];
 var ready = false;
+var messageWatch;
 var states = /* @__PURE__ */ new Map();
 var cuts = /* @__PURE__ */ new Map();
 var waiting = /* @__PURE__ */ new Map();
@@ -6404,6 +6414,10 @@ function output(packet) {
 function publish(uri, action) {
   const state = states.get(uri);
   if (!state) return;
+  if (uri === messageWatch?.channel && action?.type === "resourceWatch/changed") {
+    void readMessageWatch(messageWatch);
+    return;
+  }
   if (uri === ROOT) {
     output({ event: "root", state });
     return;
@@ -6463,7 +6477,7 @@ function apply(envelope) {
   if (rejectionReason) return;
   const state = states.get(channel);
   if (!state) return;
-  const reducer = channel === ROOT ? rootReducer : channel.startsWith("ahp-chat:") ? chatReducer : sessionReducer;
+  const reducer = channel === ROOT ? rootReducer : channel.startsWith("ahp-chat:") ? chatReducer : channel.startsWith("ahp-resource-watch:") ? resourceWatchReducer : sessionReducer;
   states.set(channel, reducer(state, action));
   publish(channel, action);
 }
@@ -6519,6 +6533,7 @@ async function connect(recover = false) {
     output({ event: "catalogInvalidated" });
     if (selected) {
       await optionalTools();
+      await optionalMessageWatch();
       publish(chatURI);
     }
     void (async () => {
@@ -6582,6 +6597,70 @@ async function optionalTools() {
     output({ event: "optionalUnavailable", capability: "client-tools", message: "Terminal agent UI registration unavailable; core conversation retained" });
   }
 }
+function messageURI(scope) {
+  const topic = initialized?._meta?.["amplifier.dev/capabilities"]?.topics?.["message-metadata"];
+  if (topic?.version !== 1 || !topic.uri) return;
+  const uri = new URL(topic.uri);
+  uri.searchParams.set("scope", scope);
+  return { uri: uri.href, watch: topic.watch === true };
+}
+async function messageRecord(scope, uri) {
+  const result = await client.request("resourceRead", { channel: ROOT, uri, encoding: "utf-8" });
+  if (result.encoding !== "utf-8" || result.contentType !== "application/json") throw new Error("Invalid message representation");
+  const record = JSON.parse(result.data);
+  if (record.topic !== "message-metadata" || record.scope !== scope || !Number.isSafeInteger(record.revision) || record.revision < 0 || !record.data || typeof record.data !== "object") throw new Error("Message response changed scope");
+  return record;
+}
+async function stopMessageWatch() {
+  const prior = messageWatch;
+  messageWatch = void 0;
+  if (prior) {
+    states.delete(prior.channel);
+    cuts.delete(prior.channel);
+    await client.unsubscribe(prior.channel);
+  }
+}
+async function readMessageWatch(watch) {
+  if (watch !== messageWatch || watch.scope !== selected) return;
+  watch.dirty = true;
+  if (watch.pending) return watch.pending;
+  const connection = client;
+  watch.pending = (async () => {
+    try {
+      do {
+        watch.dirty = false;
+        const record = await messageRecord(watch.scope, watch.uri);
+        if (watch !== messageWatch || watch.scope !== selected || client !== connection) return;
+        if (record.revision > (watch.revision ?? -1)) {
+          watch.revision = record.revision;
+          output({ event: "messageMetadata", generation, scope: watch.scope, record });
+        }
+      } while (watch.dirty);
+    } catch {
+      if (watch === messageWatch) output({ event: "optionalUnavailable", capability: "message-watch", message: "Shared reaction updates unavailable; reopen Inspect for current counts. Original receipts retained." });
+    } finally {
+      watch.pending = void 0;
+    }
+  })();
+  return watch.pending;
+}
+async function optionalMessageWatch() {
+  try {
+    await stopMessageWatch();
+    const topic = selected && messageURI(selected);
+    if (!topic?.watch) return;
+    const scope = selected, connection = client, result = await client.createResourceWatch({ uri: topic.uri, recursive: false });
+    if (scope !== selected || connection !== client) {
+      await connection.unsubscribe(result.channel);
+      return;
+    }
+    messageWatch = { scope, uri: topic.uri, channel: result.channel };
+    await subscribe(result.channel);
+    await readMessageWatch(messageWatch);
+  } catch {
+    output({ event: "optionalUnavailable", capability: "message-watch", message: "Shared reaction updates unavailable; reopen Inspect for current counts. Original receipts retained." });
+  }
+}
 async function registerTools() {
   const suffix = createHash("sha256").update(config.clientId).digest("hex").slice(0, 16);
   await dispatch(selected, { type: "session/activeClientSet", activeClient: { clientId: config.clientId, displayName: "Amplifier Unified TUI", tools: [
@@ -6626,10 +6705,12 @@ async function command(method, p) {
       cuts.delete(uri);
     }
     await optionalTools();
+    await optionalMessageWatch();
     publish(chatURI);
     return { session: selected, chat: chatURI };
   }
   if (method === "detach") {
+    await stopMessageWatch();
     for (const uri of [selected, chatURI]) if (uri) {
       await client.unsubscribe(uri);
       states.delete(uri);
@@ -6646,15 +6727,9 @@ async function command(method, p) {
   }
   if (method === "messageDescriptor") {
     if (p.session !== selected) throw Object.assign(new Error("Selection changed"), { rejected: true });
-    const topic = initialized?._meta?.["amplifier.dev/capabilities"]?.topics?.["message-metadata"];
-    if (topic?.version !== 1 || !topic.uri) throw Object.assign(new Error("Message metadata unavailable"), { rejected: true });
-    const uri = new URL(topic.uri);
-    uri.searchParams.set("scope", p.session);
-    const result = await client.request("resourceRead", { channel: ROOT, uri: uri.href, encoding: "utf-8" });
-    if (result.encoding !== "utf-8" || result.contentType !== "application/json") throw new Error("Invalid message representation");
-    const record = JSON.parse(result.data);
-    if (record.topic !== "message-metadata" || record.scope !== p.session) throw new Error("Message response changed scope");
-    return record.data;
+    const topic = messageURI(p.session);
+    if (!topic) throw Object.assign(new Error("Message metadata unavailable"), { rejected: true });
+    return (await messageRecord(p.session, topic.uri)).data;
   }
   if (method === "managed") {
     const cap = initialized?._meta?.["amplifier.dev/managedCreation"];

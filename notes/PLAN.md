@@ -17,6 +17,20 @@ Desired behavior is distinct from current [acceptance](ACCEPTANCE.md).
 | WHEEL-01 | composition.v1:1, ecosystem.v1:6 | Reproducible native wheel build and installed client | Compiler deployment floor and isolated host proc-macro artifacts; installed helper/native isolation and actual connected PTYs | Implemented; causal evidence in WHEEL-BUILD |
 
 | CONFIG-01 | session.v1:6, ecosystem.v1:2, continuity.v1:2 | Standard connected model/settings selection and truthful optional controls | Advertised mutable schema choices, readback confirmation, refusal/unknown distinction, local draft preservation and receipt-only inspection | Implemented; standard installed host and actual terminal picker/refusal qualified; fresh native schema boundary reported separately |
-| MESSAGE-01 | interaction.v1:3, continuity.v1:4, ecosystem.v1:2 | Private canonical quotes and authenticated shared reactions | Reload and selection preserve drafts; no RPC on quote selection; bounded metadata reads, exact reaction receipts, missing refs and unknown outcomes never replay | Implemented; exact installed public-host/native and PTY evidence in MESSAGE-PARITY; automatic metadata watch remains unmapped |
+| MESSAGE-01 | interaction.v1:3, continuity.v1:4, ecosystem.v1:2 | Private canonical quotes and authenticated shared reactions | Reload and selection preserve drafts; no RPC on quote selection; bounded metadata reads, exact reaction receipts, missing refs and unknown outcomes never replay | Implemented; exact installed public-host/native and PTY evidence in MESSAGE-PARITY; selected metadata watch qualified in MESSAGE-WATCH-01 |
 
 | QUOTE-RECOVERY-01 | interaction.v1:3, continuity.v1:2, continuity.v1:4 | Original frozen quoted submission survives native refusal after host admission | Stale digest/native unknown execution retains exact private text/quote/command through reload, read-only inspection and newer draft/quote without any replay | Implemented; stale-digest native refusal, exact original reload and installed terminal inspection/copy passed; independent review required |
+
+| MESSAGE-WATCH-01 | continuity.v1:3, continuity.v1:4, ecosystem.v1:2 | Selected shared reaction updates via public resource watches | Other-client changes update current projection; stale scope/revision refuses, one coalesced read, detach/reconnect never repeat effects | Implemented; other-client live updates, reconnect and exact original uncertainty tested in installed public-host/native PTYs |
+
+Selection watch repair: retain at most one latest validated metadata packet for
+an in-flight selected scope and connection generation. Commit it only after the
+matching selection snapshot; discard on cancellation, replacement or reconnect.
+Serialize selections so a late snapshot cannot replace a newer view. This keeps
+public selected-resource projection and private unknown receipts independent.
+
+Pending selection reconnect: a validated watch packet explicitly stamped with
+the current transport generation may replace the pending selection's old-generation
+buffer. Keep its same selection token/scope, discard the old packet, and compare
+revisions only within that generation. Reject old-generation packets and keep
+cancellation/replacement cleanup. No additional read or input replay is needed.
