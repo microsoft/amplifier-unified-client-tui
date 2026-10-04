@@ -34,3 +34,5 @@ the current transport generation may replace the pending selection's old-generat
 buffer. Keep its same selection token/scope, discard the old packet, and compare
 revisions only within that generation. Reject old-generation packets and keep
 cancellation/replacement cleanup. No additional read or input replay is needed.
+
+| RELEASE-01 | composition.v1:1, ecosystem.v1:6, continuity.v1:2 | Versioned qualified wheel manifest and supported-platform CI artifacts | Exact new-repository source/version, AHP/runtime/platform/bytes/hash bindings, independent installed/isolation/PTY/privacy receipts; failed or unqualified targets absent; root alone publishes after review | Proposed; release manifest validation and safe evidence packaging under qualification |

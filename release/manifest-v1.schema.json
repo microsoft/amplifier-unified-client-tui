@@ -1,0 +1,209 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/microsoft/amplifier-unified-client-tui/blob/main/release/manifest-v1.schema.json",
+  "title": "Qualified Amplifier Unified TUI release manifest v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "format",
+    "schemaVersion",
+    "package",
+    "source",
+    "compatibility",
+    "artifacts"
+  ],
+  "properties": {
+    "format": {
+      "const": "amplifier-unified-client-tui.release"
+    },
+    "schemaVersion": {
+      "const": 1
+    },
+    "package": {
+      "$ref": "#/$defs/package"
+    },
+    "source": {
+      "$ref": "#/$defs/source"
+    },
+    "compatibility": {
+      "const": {
+        "ahpVersions": [
+          "0.9.0"
+        ],
+        "sdkVersion": "0.9.0",
+        "pythonRequires": ">=3.11",
+        "nodeRequires": ">=22"
+      }
+    },
+    "artifacts": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 16,
+      "items": {
+        "$ref": "#/$defs/artifact"
+      }
+    }
+  },
+  "$defs": {
+    "package": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "version"
+      ],
+      "properties": {
+        "name": {
+          "const": "amplifier-unified-client-tui"
+        },
+        "version": {
+          "type": "string",
+          "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(?:rc[0-9]+)?$"
+        }
+      }
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "repository",
+        "commit"
+      ],
+      "properties": {
+        "repository": {
+          "const": "https://github.com/microsoft/amplifier-unified-client-tui"
+        },
+        "commit": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$"
+        }
+      }
+    },
+    "target": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "os",
+        "arch",
+        "wheelTag",
+        "osFloor"
+      ],
+      "properties": {
+        "os": {
+          "enum": [
+            "linux",
+            "macos"
+          ]
+        },
+        "arch": {
+          "enum": [
+            "arm64",
+            "x86_64"
+          ]
+        },
+        "wheelTag": {
+          "type": "string",
+          "pattern": "^py3-none-(linux_(x86_64|aarch64)|macosx_[0-9]+_[0-9]+_(arm64|x86_64))$"
+        },
+        "osFloor": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[0-9]+\\.[0-9]+$"
+        }
+      }
+    },
+    "qualification": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "evidenceFilename",
+        "evidenceSha256",
+        "installedIsolation",
+        "privacy",
+        "actualPTY",
+        "testedPython",
+        "testedNode",
+        "testedOS",
+        "minimumGlibc"
+      ],
+      "properties": {
+        "status": {
+          "const": "qualified"
+        },
+        "evidenceFilename": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,199}$"
+        },
+        "evidenceSha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "installedIsolation": {
+          "const": true
+        },
+        "privacy": {
+          "const": true
+        },
+        "actualPTY": {
+          "const": true
+        },
+        "testedPython": {
+          "type": "string",
+          "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+        },
+        "testedNode": {
+          "type": "string",
+          "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+        },
+        "testedOS": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "minimumGlibc": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[0-9]+\\.[0-9]+$"
+        }
+      }
+    },
+    "artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "filename",
+        "bytes",
+        "sha256",
+        "target",
+        "qualification"
+      ],
+      "properties": {
+        "filename": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,199}$"
+        },
+        "bytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 268435456
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "target": {
+          "$ref": "#/$defs/target"
+        },
+        "qualification": {
+          "$ref": "#/$defs/qualification"
+        }
+      }
+    }
+  },
+  "description": "Schema validates shape; scripts/release_manifest.py additionally binds filename/version/tag/OS/arch/runtime constraints, unique targets and exact wheel/evidence bytes. Both checks are required."
+}
