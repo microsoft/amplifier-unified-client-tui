@@ -17,8 +17,8 @@ import struct
 import subprocess
 import sys
 import tempfile
-import threading
 import termios
+import threading
 import time
 from datetime import datetime, timezone
 from pathlib import Path
