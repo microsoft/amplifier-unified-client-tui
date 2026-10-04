@@ -2,85 +2,108 @@ name: Qualify current AHP terminal client
 on:
   workflow_dispatch:
     inputs:
+      tui_source_commit:
+        description: Reviewed exact 40-hex TUI source, separate from qualification workflow branch
+        required: true
+      target:
+        description: Actual candidate runner target (no publication)
+        type: choice
+        options: [linux-x86_64, macos-x86_64]
+        default: linux-x86_64
       host_tarball_url:
-        description: HTTPS URL for independently built @amplifier/unified-host npm tarball
-        required: true
+        description: Reviewed credential-free HTTPS independent host tarball (exclusive with fixture)
+        required: false
       host_tarball_sha256:
-        description: Reviewed SHA256 of that host artifact
-        required: true
+        description: Reviewed SHA256 of HTTPS host artifact
+        required: false
+      host_fixture_sha256:
+        description: Reviewed temporary same-private-repo opaque host input SHA (exclusive with URL)
+        required: false
 permissions:
   contents: read
 jobs:
   wheel:
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - runner: ubuntu-22.04
-            target: linux-x86_64
-          - runner: ubuntu-24.04-arm
-            target: linux-arm64
-          - runner: macos-14
-            target: macos-arm64
-          - runner: macos-15-intel
-            target: macos-x86_64
-    runs-on: ${{ matrix.runner }}
+    if: inputs.target == 'linux-x86_64' || inputs.target == 'macos-x86_64'
+    runs-on: ${{ inputs.target == 'linux-x86_64' && 'ubuntu-22.04' || 'macos-15-intel' }}
     timeout-minutes: 30
     env:
       PYTHONDONTWRITEBYTECODE: "1"
+      TUI_SOURCE_COMMIT: ${{ inputs.tui_source_commit }}
       HOST_TARBALL_URL: ${{ inputs.host_tarball_url }}
       HOST_TARBALL_SHA256: ${{ inputs.host_tarball_sha256 }}
+      HOST_FIXTURE_SHA256: ${{ inputs.host_fixture_sha256 }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Check out temporary workflow input in this private repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           persist-credentials: false
-      - uses: astral-sh/setup-uv@d0d8abe699bfb85fec6de9f7adb5ae17292296ff
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7
         with:
           python-version: "3.13"
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-      - name: Select tested runtimes
-        run: |
-          rustup toolchain install 1.93.0 --profile minimal
-          rustup default 1.93.0
-          node -e "if(Number(process.versions.node.split('.')[0])<22)process.exit(1)"
-          uv sync --no-sources
-      - name: Fetch reviewed independent host artifact
+      - name: Validate exact source and exclusive reviewed host inputs
         run: |
           python - <<'PY'
-          import json
-          from pathlib import Path
-          state = Path.cwd().resolve() / ".state"
-          if state.resolve() != state:
-              raise SystemExit("Host consumer state must stay inside this checkout")
-          state.mkdir(exist_ok=True)
-          consumer = state / "host"
-          consumer.mkdir()  # A reused or linked consumer must fail before installing.
-          (consumer / "package.json").write_text(json.dumps({
-              "name": "tui-host-qualification-consumer", "version": "0.0.0", "private": True
-          }) + "\n")
+          import os,re,sys
+          sys.path.insert(0,'scripts')
+          from prepare_qualification_host import choose
+          if not re.fullmatch(r'[0-9a-f]{40}',os.environ['TUI_SOURCE_COMMIT']):
+              raise SystemExit('TUI source must be an exact reviewed commit')
+          choose(os.environ['HOST_TARBALL_URL'],os.environ['HOST_TARBALL_SHA256'],os.environ['HOST_FIXTURE_SHA256'])
           PY
-          curl --fail --location --proto '=https' "$HOST_TARBALL_URL" -o .state/host.tgz
-          python -c "import hashlib,os,pathlib; assert hashlib.sha256(pathlib.Path('.state/host.tgz').read_bytes()).hexdigest()==os.environ['HOST_TARBALL_SHA256']"
-          TUI_HOST_ROOT="$(pwd -P)/.state/host"
-          test "$(npm --prefix "$TUI_HOST_ROOT" --global=false --workspaces=false prefix)" = "$TUI_HOST_ROOT"
-          test "$(npm --prefix "$TUI_HOST_ROOT" --global=false --workspaces=false root)" = "$TUI_HOST_ROOT/node_modules"
-          npm install --prefix "$TUI_HOST_ROOT" --global=false --workspaces=false --ignore-scripts "$PWD/.state/host.tgz"
-      - name: Source, package, independent install and actual terminal gate
+      - name: Check out separately qualified TUI source in the same repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ inputs.tui_source_commit }}
+          path: .state/tui-source
+          persist-credentials: false
+      - name: Prepare checksum-bound independent installed host
         run: |
-          export AHP_HOST_ENTRY="$PWD/.state/host/node_modules/@amplifier/unified-host/dist/cli.js"
-          export AHP_HOST_MODULE="file://$PWD/.state/host/node_modules/@amplifier/unified-host/dist/index.js"
+          python scripts/prepare_qualification_host.py --url "$HOST_TARBALL_URL" --sha256 "$HOST_TARBALL_SHA256" --fixture-sha256 "$HOST_FIXTURE_SHA256"
+      - name: Qualify exact source, wheel and installed terminal
+        run: |
+          export AHP_HOST_ENTRY="$GITHUB_WORKSPACE/.state/qualification-host/node_modules/@amplifier/unified-host/dist/cli.js"
+          export AHP_HOST_MODULE="file://$GITHUB_WORKSPACE/.state/qualification-host/node_modules/@amplifier/unified-host/dist/index.js"
+          cd .state/tui-source
+          test "$(git rev-parse HEAD)" = "$TUI_SOURCE_COMMIT"
+          rustup toolchain install 1.93.0 --profile minimal
+          export RUSTUP_TOOLCHAIN=1.93.0
+          uv sync --no-sources --locked
+          mkdir -p .state
           uv run --no-sync python scripts/qualify_current.py
-      - name: Export exact qualified manifest and safe evidence
-        run: |
-          uv run --no-sync python scripts/release_manifest.py export --output .release-assets --expected-target "${{ matrix.target }}"
+          uv run --no-sync python scripts/release_manifest.py export --output .release-assets --expected-target "${{ inputs.target }}"
           uv run --no-sync python scripts/release_manifest.py validate .release-assets/manifest.json --verify-assets
+      - name: Bind workflow input provenance to separate qualified source
+        run: |
+          python - <<'PY'
+          import json,os,subprocess
+          from pathlib import Path
+          p=Path('.state/host-input-proof.json')
+          value=json.loads(p.read_text())
+          value['workflowInputCommit']=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()
+          value['qualifiedTuiSource']=os.environ['TUI_SOURCE_COMMIT']
+          value['purpose']='Temporary same-private-repository qualification; no publication'
+          Path('.state/tui-source/.release-assets/host-input-proof.json').write_text(json.dumps(value,indent=2)+'\n')
+          PY
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: amplifier-unified-client-tui-${{ matrix.runner }}
-          path: |
-            .release-assets/*
+          name: amplifier-unified-client-tui-${{ inputs.target }}
+          path: .state/tui-source/.release-assets/*
           if-no-files-found: error
           retention-days: 14
-# No automatic tag, publication, deployment or credentialed provider call.
+      - name: Retain private failure evidence without host archive or environments
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: tui-qualification-failure-${{ inputs.target }}
+          path: |
+            .state/tui-source/.evidence/current
+            .state/tui-source/.state/qualification-tests
+            .state/tui-source/.state/installed-terminal
+            .state/host-input-proof.json
+          if-no-files-found: warn
+          retention-days: 14
+# Temporary private qualification branch only. No host source checkout, secrets,
+# repository changes, runner purchases, tags, publication or live installation.

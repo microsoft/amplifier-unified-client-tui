@@ -41,3 +41,8 @@ RELEASE-01 review repair: refuse nonregular/symlink input through no-follow,
 nonblocking descriptors before reading. Bound JSON at MAX_BYTES+1, stream wheel
 hash/copy within declared bytes, and reject descriptor/path identity or content
 changes. Preserve f6 evidence; requalify a separate successor before adoption.
+
+Temporary x86 qualification branch: preserve exact reviewed opaque host archive
+outside shipped paths. Use same-private-repository checkout only; isolated host
+consumer and separate exact TUI source checkout. Retain tarball mode with strict
+mutual exclusion; no credentials, cross-repository fetch, fallback or publication.
