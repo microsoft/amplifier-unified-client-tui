@@ -356,6 +356,10 @@ impl App {
                 "",
             ),
         ];
+        if self.connected && !item.reference.is_null() && !item.historical_only {
+            if self.ui.quote_available { choices.push(choice("Reply with private quote — nothing sent", Action::Reply(id.clone()), "")); }
+            if self.ui.reactions_available { choices.push(choice("Inspect shared reactions — no prompt", Action::MessageRead(id.clone()), "")); }
+        }
         if reuse {
             choices.push(choice(
                 "Reuse correction as an unsent draft — review first",

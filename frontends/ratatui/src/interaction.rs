@@ -39,6 +39,14 @@ pub(super) enum Action {
     CodeBlock(Arc<code_blocks::CodeBlock>),
     CopyCode(Arc<code_blocks::CodeBlock>),
     Message(String),
+    Messages,
+    Reply(String),
+    ClearReply,
+    MessageRead(String),
+    MessageReaction(String, String, bool),
+    MessageReceipt(String),
+    QuotedSubmission(String),
+    RefreshMessages,
     Jump(String),
     CopyMessage(String),
     CopyText(String),
@@ -207,6 +215,9 @@ impl Menu {
 
 #[derive(Default)]
 pub(super) struct Interaction {
+    pub quote: Value,
+    pub quote_available: bool,
+    pub reactions_available: bool,
     pub menu: Option<Menu>,
     pub focus: Option<Action>,
     pub buttons: Vec<(Rect, Choice)>,
@@ -348,6 +359,9 @@ impl App {
                             | Action::CodeBlocks
                             | Action::LocalDrafts
                             | Action::History
+                            | Action::Messages
+                            | Action::ClearReply
+                    | Action::QuotedSubmission(_)
                     )
                 })
                 .collect()
@@ -402,6 +416,10 @@ impl App {
                     | Action::HistoryPage(..)
                     | Action::HistoryItem(..)
                     | Action::Message(..)
+                    | Action::Reply(..)
+                    | Action::ClearReply
+                    | Action::QuotedSubmission(_)
+                    | Action::Messages
                     | Action::CopyMessage(..)
                     | Action::CopySource(..)
                     | Action::CopySelection
@@ -445,6 +463,8 @@ impl App {
                     choice("Latest — follow new output", Action::Latest),
                     choice("Find in conversation — search retained message text", Action::Find),
                     choice("Assistant replies — inspect / copy Markdown", Action::Replies),
+                    choice("Messages — quote or inspect shared reactions", Action::Messages),
+                    choice("Remove selected quote — keep message text", Action::ClearReply),
                     choice("Copy selection — selected visible text", Action::CopySelection),
                     choice("Native scrollback — return to normal terminal", Action::NativeScrollback),
                     choice("Interact — click conversation details", Action::Interact),
@@ -804,6 +824,19 @@ impl App {
             }
             Action::CopySource(source) => self.copy = Some(source.to_string()),
             Action::Message(id) => self.message_menu(id),
+            Action::Messages => {
+                let mut choices: Vec<_> = self.items.iter().filter(|item| matches!(item.kind.as_str(), "user" | "assistant"))
+                    .map(|item| choice(safe(&item.text.chars().take(100).collect::<String>()).replace('\n', " ↵ "), Action::Message(item.id.clone()))).collect();
+                choices.insert(0, choice("Refresh saved messages — no prompt", Action::RefreshMessages));
+                self.menu("Saved messages · private quotes and shared reactions", choices);
+            }
+            Action::Reply(id) => self.send(json!({"op":"message.reply","message_id":id})),
+            Action::ClearReply => self.send(json!({"op":"message.replyClear"})),
+            Action::MessageRead(id) => self.send(json!({"op":"message.read","message_id":id})),
+            Action::MessageReaction(id, emoji, present) => self.send(json!({"op":"message.reaction","message_id":id,"emoji":emoji,"present":present})),
+            Action::QuotedSubmission(id) => self.send(json!({"op":"message.submissionInspect","id":id})),
+            Action::MessageReceipt(id) => self.send(json!({"op":"message.receipt","id":id})),
+            Action::RefreshMessages => self.send(json!({"op":"message.refresh"})),
             Action::Jump(id) => { if let Some(&i) = self.index.get(&id) { self.reveal_item(i); } }
             Action::CopyMessage(id) => {
                 if let Some(&i) = self.index.get(&id) {
@@ -1404,6 +1437,7 @@ impl App {
             "/find" => Some(Action::Find),
             "/rename" => Some(Action::Rename),
             "/replies" => Some(Action::Replies),
+            "/messages" => Some(Action::Messages),
             _ => None,
         }
     }

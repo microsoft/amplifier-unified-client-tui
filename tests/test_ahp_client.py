@@ -150,10 +150,10 @@ async def test_selected_history_window_and_explicit_fetch(ahp_host):
         session = a.selected
         await a.dispatch(request(a, 'switch', target='new', draft=''))
         b, _ = await view(root / 'b', url, session=session)
-        assert len(b.session['messages']) == 50
+        assert len([message for message in b.session['messages'] if message['role'] == 'user']) == 50
         assert b.session['historyCursor']
         await b.transport.command(session, 'session.history', {}, str(uuid.uuid4()))
-        await wait_for(lambda: len(b.session['messages']) == 53)
+        await wait_for(lambda: len([message for message in b.session['messages'] if message['role'] == 'user']) == 53)
         assert not b.session['historyCursor']
         await b.dispatch(request(b, 'rename', title='Renamed through AHP'))
         await wait_for(lambda: b.session['title'] == 'Renamed through AHP')

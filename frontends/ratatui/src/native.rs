@@ -2172,6 +2172,7 @@ mod tests {
             text: "[thinking] Original retained thinking".into(),
             status: "info".into(),
             detail: json!({"source":"thinking", "text":"word ".repeat(1000)}).to_string(),
+            ..Default::default()
         };
         let rows = ordinary_lines(&item, 175);
         assert!(rows.len() < 5);
@@ -2195,6 +2196,7 @@ mod tests {
             text: "example\n".to_owned() + &"line\n".repeat(20),
             status: "unknown".into(),
             detail: "Exact original result".into(),
+            ..Default::default()
         };
         let rows = ordinary_lines(&tool, 80);
         assert!(rows[0].to_string().contains("unknown"));
@@ -2286,7 +2288,7 @@ mod tests {
     #[test]
     fn legacy_delegate_progress_does_not_invent_zero_calls() {
         let item = Item { id: "legacy".into(), kind: "tool".into(), text: "delegate".into(), status: "succeeded".into(),
-            detail: json!({"name":"delegate", "child_progress":[{"agent":"probe #1","activity":"Completed"}]}).to_string() };
+            detail: json!({"name":"delegate", "child_progress":[{"agent":"probe #1","activity":"Completed"}]}).to_string(), ..Default::default() };
         let text = ordinary_lines(&item, 175)
             .iter()
             .map(ToString::to_string)
@@ -2363,6 +2365,7 @@ mod tests {
                 "agent":"Skill · fixture-review #1", "status":"succeeded", "activity":"succeeded",
                 "calls":3, "elapsed_seconds":125, "warnings":{"failed":2}, "notices":{"warning":1,"error":0}
             }], "child_cost_display":"$0.03"}).to_string(),
+            ..Default::default()
         };
         let text = ordinary_lines(&item, 175)[0].to_string();
         assert!(text.contains("done · 2 tool errors · 1 hook warning"));
@@ -2390,6 +2393,7 @@ mod tests {
                 "child_cost_partial": false
             })
             .to_string(),
+            ..Default::default()
         };
         let text = ordinary_lines(&item, 175)
             .iter()

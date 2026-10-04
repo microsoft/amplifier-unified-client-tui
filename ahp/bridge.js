@@ -72,7 +72,7 @@ async function registerTools(){
   const suffix=createHash('sha256').update(config.clientId).digest('hex').slice(0,16);
   await dispatch(selected,{type:'session/activeClientSet',activeClient:{clientId:config.clientId,displayName:'Amplifier Unified TUI',tools:[
     {name:`amplifier_tui_inspect_${suffix}`,title:'Inspect this terminal view',description:'Read current renderer revision and selected view; private draft only when includeDraft=true.',inputSchema:{type:'object',properties:{includeDraft:{type:'boolean'}}}},
-    {name:`amplifier_tui_action_${suffix}`,title:'Control this terminal view',description:'Use the current renderer revision for draft.replace, view.select or panel.open. Never submits a prompt.',inputSchema:{type:'object',required:['action','expectedRevision'],properties:{action:{type:'string',enum:['draft.replace','view.select','panel.open']},expectedRevision:{type:'integer'},args:{type:'object'}}}}
+    {name:`amplifier_tui_action_${suffix}`,title:'Control this terminal view',description:'Use the current renderer revision for private drafts, navigation, quotes or negotiated message metadata. Never submits a prompt.',inputSchema:{type:'object',required:['action','expectedRevision'],properties:{action:{type:'string',enum:['draft.replace','view.select','panel.open','message.reply','message.replyClear','message.read','message.reaction','message.receipt','message.refresh','message.submissionInspect']},expectedRevision:{type:'integer'},args:{type:'object'}}}}
   ]}});
 }
 async function command(method,p){
@@ -97,6 +97,15 @@ async function command(method,p){
     if(!action||action.method!=='x-amplifier/capabilityAction'||manifest.topics?.[action.topic]?.version!==1)throw Object.assign(new Error('Capability action unavailable'),{rejected:true});
     return client.request(action.method,{channel:p.channel??ROOT,topic:action.topic,operation:action.operation,version:1,args:p.args??{},commandId:p.commandId});
   }
+  if(method==='messageDescriptor'){
+    if(p.session!==selected)throw Object.assign(new Error('Selection changed'),{rejected:true});
+    const topic=initialized?._meta?.['amplifier.dev/capabilities']?.topics?.['message-metadata'];
+    if(topic?.version!==1||!topic.uri)throw Object.assign(new Error('Message metadata unavailable'),{rejected:true});
+    const uri=new URL(topic.uri);uri.searchParams.set('scope',p.session);
+    const result=await client.request('resourceRead',{channel:ROOT,uri:uri.href,encoding:'utf-8'});
+    if(result.encoding!=='utf-8'||result.contentType!=='application/json')throw new Error('Invalid message representation');
+    const record=JSON.parse(result.data);if(record.topic!=='message-metadata'||record.scope!==p.session)throw new Error('Message response changed scope');return record.data;
+  }
   if(method==='managed'){
     const cap=initialized?._meta?.['amplifier.dev/managedCreation'];
     if(cap?.version!==1||cap.method!=='x-amplifier/managedSession'||!cap.operations?.includes(p.operation))throw Object.assign(new Error('Managed creation capability unavailable'),{rejected:true});
@@ -112,9 +121,10 @@ async function command(method,p){
     await client.request('createSession',{channel:p.session,provider,workingDirectories:[p.cwd??initialized.defaultDirectory]});return {session:p.session};
   }
   if(method==='toolComplete')return dispatch(p.chat,{type:'chat/toolCallComplete',turnId:p.turnId,toolCallId:p.toolCallId,result:p.result});
-  if(method==='send')return dispatch(p.chat,{type:'chat/turnStarted',turnId:p.commandId,startedAt:new Date().toISOString(),message:{text:p.text,origin:{kind:'user'}}});
+  if(method==='send')return dispatch(p.chat,{type:'chat/turnStarted',turnId:p.commandId,startedAt:new Date().toISOString(),message:{text:p.text,origin:{kind:'user'},...(p.reply?{_meta:{'amplifier.dev/messageReply':p.reply}}:{})}});
   if(method==='cancel')return dispatch(p.chat,{type:'chat/turnCancelled',turnId:p.turnId,duration:0});
   if(method==='refreshSession'){if(p.session!==selected)throw Object.assign(new Error('Selection changed'),{rejected:true});const result=await client.request('subscribe',{channel:p.session});if(!result.snapshot)throw new Error('Host omitted selected snapshot');baseline(result.snapshot);return {};}
+  if(method==='refreshChat'){if(p.session!==selected)throw Object.assign(new Error('Selection changed'),{rejected:true});const result=await client.request('subscribe',{channel:chatURI,view:{turns:50}});if(!result.snapshot)throw new Error('Host omitted selected chat snapshot');baseline(result.snapshot);return {};}
   if(method==='configure')return dispatch(p.session,{type:'session/configChanged',config:p.config});
   if(method==='rename')return dispatch(p.session,{type:'session/titleChanged',title:p.title});
   if(method==='decision')return dispatch(p.chat,{type:'chat/toolCallConfirmed',turnId:p.turnId,toolCallId:p.toolCallId,approved:p.approved,confirmed:'user-action',selectedOptionId:p.option});

@@ -5,6 +5,7 @@ import asyncio
 import json
 import uuid
 
+from .unified_messages import Messages
 from .unified_projection import project
 from .unified_transport import Rejected
 
@@ -23,6 +24,7 @@ class UnifiedBridge:
         self.workspace_choices = {}
         self.published_controls = None
         self.session = {}
+        self.messages = Messages(self)
         self.actions = set()
         self.pump = None
         self.tasks = set()
@@ -70,7 +72,7 @@ class UnifiedBridge:
                 raise ValueError('Client tool input must be bounded inline JSON')
             args = json.loads(tool_input)
             operation = 'inspect' if '_inspect_' in tool['toolName'] else args.get('action')
-            if operation not in {'inspect', 'draft.replace', 'view.select', 'panel.open'}:
+            if operation not in {'inspect', 'draft.replace', 'view.select', 'panel.open', 'message.reply', 'message.replyClear', 'message.read', 'message.reaction', 'message.receipt', 'message.refresh', 'message.submissionInspect'}:
                 raise ValueError('Client action is unavailable')
             token = str(uuid.uuid4())
             future = asyncio.get_running_loop().create_future()
@@ -84,6 +86,25 @@ class UnifiedBridge:
                 self.ui_requests.pop(token, None)
             if not result.get('accepted'):
                 raise ValueError(result.get('error', 'Client refused the action'))
+            if operation == 'inspect':
+                result['quotedSubmissions'] = [{'id': command, 'admission': row.get('admission'), 'execution': row.get('execution')}
+                                              for command, row in list(self.messages.submissions().items())[-32:]
+                                              if row['session'] == session]
+                result['messageRequests'] = [{'id': command, 'operation': effect['operation'], 'status': effect['status']}
+                                             for command, effect in list(self.store.data.get('messageEffects', {}).items())[-32:]
+                                             if effect['session'] == session]
+            if operation.startswith('message.'):
+                if session != self.selected:
+                    raise ValueError('Client selection changed; no message control applied')
+                allowed = {'message_id', 'emoji', 'present', 'id'}
+                payload = args.get('args', {})
+                if not isinstance(payload, dict) or not set(payload) <= allowed:
+                    raise ValueError('Exact selected message arguments required')
+                ok, reason = await self.dispatch({'op': operation, 'session_id': session,
+                                                  'request_id': token, **payload})
+                if not ok:
+                    raise ValueError(reason)
+                result = {**result, 'messageControl': operation, 'result': reason}
             value = {'success': True, 'pastTenseMessage': 'Observed the targeted terminal result',
                      'content': [{'type': 'text', 'text': json.dumps(result)}], 'structuredContent': result}
         except (OSError, ValueError, TimeoutError) as exc:
@@ -108,6 +129,7 @@ class UnifiedBridge:
 
     def initial(self, preserve_draft=False):
         self.published_controls = None
+        self.messages.preview_key = None
         self.published, self.published_order, self.published_title = {}, [], None
         self.send('snapshot', reset=not preserve_draft, connected=True, ready=True, navigation=True,
                   resume_picker=self.resume_picker,
@@ -203,9 +225,10 @@ class UnifiedBridge:
         return ok, message
 
     def items(self):
-        return project(self.session, self.store.data['outbox'])
+        return self.messages.decorate(project(self.session, self.store.data['outbox']))
 
     def publish(self):
+        self.messages.publish()
         items = self.items()
         current = {item['id']: item for item in items}
         order = list(current)
@@ -273,10 +296,13 @@ class UnifiedBridge:
             self.retired_instances.add(self.instance)
         self.instance, self.revision, self.session = instance, revision, session
         self.publish_controls()
+        if self.messages.canonical_refresh_needed():
+            self.later(self.messages.settled_refresh(self.selected))
         changed = False
         for message in session.get('messages', []):
             identity = message.get('inputId')
             if identity in self.store.data['outbox'] and message.get('delivery', {}).get('status') == 'accepted':
+                self.messages.admission(identity, 'accepted')
                 self.store.journal(identity, {**self.store.data['outbox'][identity], 'status': 'accepted'})
                 del self.store.data['outbox'][identity]
                 changed = True
@@ -395,6 +421,30 @@ class UnifiedBridge:
         if op in {'draft', 'editor_draft'}:
             self.store.draft(target, request.get('text', ''))
             return True, 'Draft saved locally'
+        if op in {'message.reply', 'message.replyClear', 'message.read', 'message.reaction', 'message.receipt', 'message.refresh', 'message.submissionInspect'}:
+            try:
+                if op == 'message.reply':
+                    self.messages.select_quote(request.get('message_id'))
+                    return True, 'Quote selected privately. Write your reply and Send when ready.'
+                if op == 'message.replyClear':
+                    self.messages.clear_quote()
+                    return True, 'Quote removed. Your message text is kept.'
+                if op == 'message.submissionInspect':
+                    self.messages.inspect_submission(request.get('id'))
+                    return True, 'Original quoted submission inspected privately. Nothing was repeated.'
+                if not self.online:
+                    return False, 'Reconnect before inspecting shared messages; your draft is kept.'
+                if op == 'message.refresh':
+                    await self.messages.refresh(target)
+                    return True, 'Saved message references refreshed. No message was sent.'
+                if op == 'message.read':
+                    await self.messages.read(request.get('message_id'))
+                    return True, 'Shared reactions inspected. No message was sent.'
+                if op == 'message.receipt':
+                    return await self.messages.recover(request.get('id'))
+                return await self.messages.react(request.get('message_id'), request.get('emoji'), request.get('present'))
+            except (Rejected, OSError, ValueError, TimeoutError) as exc:
+                return False, str(exc) or 'Message control unavailable. Your draft is kept.'
         if op in {'settings', 'setting_choices', 'setting_set'}:
             if not self.online:
                 return False, 'Reconnect before changing settings; your draft is kept.'
@@ -419,7 +469,7 @@ class UnifiedBridge:
                     return await self.host_review(request['purpose'], target)
                 if op == 'host_apply':
                     return await self.apply_host_review(request, target)
-                effects = {**self.store.data.get('hostEffects', {}), **self.store.data.get('configEffects', {})}
+                effects = {**self.store.data.get('hostEffects', {}), **self.store.data.get('configEffects', {}), **self.messages.effects()}
                 if op == 'host_effects':
                     self.send('host_effects', entries=[{'id': key, **row} for key, row in effects.items()
                                                       if row['session'] == target])
@@ -427,6 +477,9 @@ class UnifiedBridge:
                 row = effects.get(request.get('id'))
                 if not row or row['session'] != target:
                     return False, 'Receipt target differs'
+                if row['operation'] == 'message.reaction':
+                    self.send('host_review', purpose='receipt', detail=json.dumps({'original': row, 'limits': 'Only the original message receipt can settle an unknown reaction. Current counts cannot prove it; nothing was repeated.'}, indent=2), label='')
+                    return await self.messages.recover(request['id'])
                 if row['operation'] == 'session.configure':
                     self.send('host_review', purpose='receipt', detail=json.dumps({'original': row, 'currentObservedValues': self.session.get('config', {}).get('values', {}), 'limits': 'Current values do not prove the outcome of an unknown request. Nothing was resent.'}, indent=2), label='')
                     return True, 'Original setting receipt inspected. Nothing was resent.'
@@ -442,8 +495,9 @@ class UnifiedBridge:
             except (OSError, ValueError, TimeoutError, KeyError):
                 return False, 'This action is not available right now. Keep your draft and use Original receipts to inspect a previous change.'
         if op == 'deliveries':
+            originals = [{'id': key, **row} for key, row in self.messages.submissions().items() if row['session'] == target][-8:]
             self.send('deliveries', entries=[{'id': key, **row} for key, row in self.store.data['outbox'].items()
-                                             if row.get('session') == target])
+                                             if row.get('session') == target and key not in self.messages.submissions()] + originals)
             return True, 'Pending delivery; inspect receipts without resubmitting'
         if op == 'edit_delivery':
             row = self.store.data['outbox'].get(request.get('id'))
@@ -569,6 +623,16 @@ class UnifiedBridge:
                     return False, 'This host does not offer that action'
                 if op == 'submit' and not args['text'].strip():
                     return False, 'Write a message first'
+                if op == 'submit':
+                    try:
+                        quote = self.messages.prepare()
+                        if quote and len(self.messages.submissions()) >= 512:
+                            raise ValueError('Original quoted submissions are full. Your draft and quote are retained.')
+                    except ValueError as exc:
+                        return False, str(exc)
+                    if quote:
+                        args['reply'] = quote['reference']
+                        args['replyId'] = quote['id']
                 if request.get('image_id'):
                     return False, 'Connected image upload is not available; use the web client'
                 if len(self.store.data['outbox']) >= 512:
@@ -576,6 +640,8 @@ class UnifiedBridge:
                 identity = str(uuid.uuid4())
                 row = {'session': target, 'action': action, 'args': args, 'status': 'sending',
                        'local_request': request['request_id'], 'generation': self.generation}
+                if op == 'submit' and quote:
+                    row['quote'] = quote
                 if target is None:
                     if op != 'submit':
                         return False, 'Select a conversation first'
@@ -599,8 +665,11 @@ class UnifiedBridge:
 
     async def deliver(self, identity, row):
         row['status'] = 'sending'
+        self.messages.retain_submission(identity, row)
         self.store.journal(identity, row)
         self.store.save()  # Durable intent before the first request, including session creation.
+        if row['action'] == 'conversation.send' and row['session'] == self.selected and row['args'].get('replyId'):
+            self.messages.clear_quote(row['args']['replyId'])
         self.publish()
         if row['action'] == 'conversation.send' and row.get('generation') == self.generation:
             self.send('input_pending', request_id=row.get('local_request'), text=row['args']['text'])
@@ -623,6 +692,7 @@ class UnifiedBridge:
             result = await self.transport.command(row['session'], row['action'], row['args'], identity)
             uncertain = result.get('delivery') == 'unknown'
             acknowledged = not uncertain
+            self.messages.admission(identity, 'unconfirmed' if uncertain else 'accepted')
             # A concurrent snapshot may already have acknowledged and removed this entry.
             if identity in self.store.data['outbox']:
                 row['status'] = 'unknown' if uncertain else 'accepted'
@@ -645,6 +715,7 @@ class UnifiedBridge:
                 return True, 'Acceptance confirmed by the conversation stream'
             row['status'] = 'failed' if 400 <= exc.status < 500 and exc.status != 408 else 'unknown'
             row['error'] = str(exc)
+            self.messages.admission(identity, 'refused' if row['status'] == 'failed' else 'unconfirmed')
             self.store.save()
             self.publish()
             await self.refresh_delivery(row)

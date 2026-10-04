@@ -32,14 +32,25 @@ def _text(value):
     return value if isinstance(value, str) else value.get('value', '') if isinstance(value, dict) else ''
 
 
+def _message_metadata(history):
+    return {'historicalOnly': history.get('historicalOnly') is True,
+            **({'reference': history['messageReference']} if 'messageReference' in history else {}),
+            **({'replyTo': history['replyTo']} if 'replyTo' in history else {})}
+
+
 def _turn_items(turn):
     identity = turn['id']
     message = turn.get('message', {})
     history = message.get('_meta', {}).get('amplifier.dev/history', {})
     text = message.get('text', '')
     role = 'assistant' if message.get('origin', {}).get('kind') == 'agent' else 'user'
-    items = ([{'id': 'input:' + identity, 'kind': role, 'text': text, 'status': '',
+    items = ([{'id': 'input:' + identity, 'kind': role, 'text': text, 'status': '', **_message_metadata(history),
                'detail': json.dumps(message, ensure_ascii=False)}] if text else [])
+    quote = history.get('replyTo')
+    if items and isinstance(quote, dict) and isinstance(quote.get('excerpt'), str):
+        items.insert(0, {'id': identity + ':quote', 'kind': 'notice',
+                        'text': 'Quoted ' + ('You' if quote.get('role') == 'user' else 'Amplifier') + ' · ' + quote['excerpt'][:4000],
+                        'status': '', 'detail': json.dumps(quote, ensure_ascii=False)})
     if history.get('via') == 'call':
         items.append({'id': identity + ':call', 'kind': 'notice',
                       'text': 'Recorded voice · ' + str(history.get('outcome', 'recorded')),
@@ -52,6 +63,8 @@ def _turn_items(turn):
             # Text is already visible. Do not duplicate its growing body in detail.
             item['detail'] = json.dumps({k: v for k, v in part.items() if k != 'content'}, ensure_ascii=False)
             item.update(kind='assistant' if kind == 'markdown' else 'thinking', text=part.get('content', ''), status='running' if turn.get('state') is None else '')
+            item.update(_message_metadata(part.get('_meta', {}).get('amplifier.dev/history', {})))
+            item['historicalOnly'] = item['historicalOnly'] or history.get('historicalOnly') is True
         elif kind == 'toolCall':
             tool = part['toolCall']
             item.update(id='tool:' + identity + ':' + tool['toolCallId'], kind='tool',
@@ -274,10 +287,11 @@ class Transport:
         return (manifest.get('version') == 1 and record.get('method') == 'x-amplifier/capabilityAction'
                 and manifest.get('topics', {}).get(record.get('topic'), {}).get('version') == 1)
 
-    async def capability(self, action, args, channel='ahp-root://'):
-        result = await self.rpc('capability', action=action, args=args, channel=channel, commandId=str(uuid.uuid4()))
+    async def capability(self, action, args, channel='ahp-root://', *, command_id=None):
+        result = await self.rpc('capability', action=action, args=args, channel=channel, commandId=command_id or str(uuid.uuid4()))
         if result.get('accepted') is not True:
-            raise Rejected(422, {'error': result.get('result', {}).get('reason', 'Capability refused')})
+            data = result.get('result') or {}
+            raise Rejected(422, {**data, 'error': data.get('message', data.get('reason', 'Capability refused'))})
         return result['result']
 
     async def workspaces(self, *, offset=0, query=''):
@@ -378,10 +392,14 @@ class Transport:
                    'workspace': unquote(urlsplit((source.get('workingDirectories') or [''])[0]).path),
                    'status': 'working' if chat.get('activeTurnId') else 'ready',
                    'activeTurnId': chat.get('activeTurnId'), 'chat': source['defaultChat'],
-                   'messages': [{'id': t['id'], 'inputId': t['id'], 'role': 'assistant' if t['message'].get('origin', {}).get('kind') == 'agent' else 'user', 'text': t['message'].get('text', ''), 'delivery': {'status': 'accepted'}} for t in turns],
+                   'messages': [{**item, 'role': item['kind'], 'messageReference': item.get('reference'),
+                                 **({'inputId': turn['id'], 'delivery': {'status': 'accepted'}} if item['kind'] == 'user' and item['id'] == 'input:' + turn['id'] else {})}
+                                for turn in turns for item in _turn_items(turn) if item['kind'] in {'user', 'assistant'}],
                    'displayItems': [item for key in chat['order'] for item in chat['items'][key]],
                    'approvals': approvals, 'sharedHistoryOffset': 1 if chat.get('turnsNextCursor') else 0,
-                   'historyCursor': chat.get('turnsNextCursor'), 'config': source.get('config') or {}, 'error': chat.get('error')}
+                   'historyCursor': chat.get('turnsNextCursor'), 'config': source.get('config') or {}, 'error': chat.get('error'),
+                   'agentCapabilities': source.get('_meta', {}).get('amplifier.dev/acp', {}).get('capabilities', {}),
+                   'lastSettledTurnId': source.get('_meta', {}).get('amplifier.dev/acp', {}).get('lastSettledTurnId')}
         return {'protocolVersion': 1, 'hostInstanceId': str(self.generation), 'revision': self.revision, 'session': session}
 
     async def snapshot(self, identity):
@@ -413,7 +431,8 @@ class Transport:
         snapshot = self._snapshot(identity)['session']
         chat = snapshot['chat']
         if action == 'conversation.send':
-            return await self.rpc('send', chat=chat, text=args['text'], commandId=command_id)
+            return await self.rpc('send', chat=chat, text=args['text'], commandId=command_id,
+                                  **({'reply': args['reply']} if args.get('reply') else {}))
         if action == 'conversation.stop':
             if not snapshot['activeTurnId']:
                 raise Rejected(422, {'error': 'No active turn to cancel'})
