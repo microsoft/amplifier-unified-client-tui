@@ -151,6 +151,8 @@ jobs:
           path: .state/sealed-wheel
           run-id: ${{ steps.inputs.outputs.wheel-run }}
           github-token: ${{ github.token }}
+      - name: Verify persistence observer controls
+        run: python .github/scripts/test_saved_draft_observer.py
       - name: Verify managed archives and run installed PTYs
         env:
           TARGET: ${{ inputs.target }}

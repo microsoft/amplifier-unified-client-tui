@@ -78,3 +78,11 @@ extraction API as a provenance-bound test peer. Bootstrap reads only the exact
 regular Node member from its verified archive. Root's bounded no-link-traversal
 policy then unpacks both archives; escaping links and special files still refuse.
 The earlier Python 3.10 tarfile refusal and earlier Mac success remain separate.
+
+Installed model-picker observer (continuity.v1:2): local composer visibility and
+a fixed 300 ms pause do not prove retained draft state after its 250 ms debounce
+and IPC. Await the complete local text and exact saved draft under its original
+session, within the existing displayed timeout and live-process check. Retain
+exact text, confirmed/refused settings, two changes and zero prompts assertions.
+The supplemental observer commit is separate from the unchanged sealed wheel's
+731 source; historical 4-pass/1-failure evidence and final teardown state remain.

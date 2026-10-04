@@ -25,6 +25,34 @@ async def displayed(probes, predicate, timeout=12):
             await asyncio.sleep(.01)
 
 
+async def saved_draft_state(probe, path, session, text, timeout=12):
+    """Renderer text is local; require the exact retained draft in its scope."""
+    import json
+    state = None
+    observations = 0
+    first_match = None
+    started = asyncio.get_running_loop().time()
+
+    def retained():
+        nonlocal state, observations, first_match
+        state = json.loads(path.read_text())
+        matched = state['drafts'].get(session) == text
+        observations += 1
+        if first_match is None:
+            first_match = matched
+        return matched
+
+    await displayed([probe], retained, timeout=timeout)
+    assert probe.process.poll() is None, probe.text
+    evidence = Path(os.environ.get('TUI_EVIDENCE_DIR', path.parent))
+    evidence.mkdir(parents=True, exist_ok=True)
+    (evidence / 'draft-persistence-observer.txt').write_text(json.dumps({
+        'initialExactDraftPresent': first_match, 'observations': observations,
+        'elapsedMilliseconds': round((asyncio.get_running_loop().time() - started) * 1000, 2),
+        'exactSessionAndTextMatched': True, 'matchedWhileClientLive': True}))
+    return state
+
+
 @pytest.mark.parametrize('size', [(120, 40), (40, 20)])
 async def test_real_terminal_stream_approval_private_draft_and_exit(ahp_host, size):
     url, root, log = ahp_host
@@ -115,7 +143,6 @@ async def test_actual_terminal_long_stream_remains_responsive_and_exact(ahp_host
 
 
 async def test_actual_terminal_standard_model_picker_keeps_private_draft(ahp_host):
-    import json
     import uuid
 
     from amplifier_tui.unified_transport import Transport
@@ -150,9 +177,10 @@ async def test_actual_terminal_standard_model_picker_keeps_private_draft(ahp_hos
         probe.send(b'\x1b[27u')
         await displayed([probe], lambda: 'Model and conversation settings' not in probe.text)
         probe.send(b'Private unsent draft after model change')
-        await displayed([probe], lambda: 'Private unsent draft' in probe.text)
-        await asyncio.sleep(.3)
-        state = json.loads((root / 'model-terminal/connections/model-picker.json').read_text())
+        await displayed([probe], lambda: 'Private unsent draft after model change' in probe.text)
+        state = await saved_draft_state(probe,
+            root / 'model-terminal/connections/model-picker.json', identity,
+            'Private unsent draft after model change')
         assert state['drafts'][identity] == 'Private unsent draft after model change'
         assert [row['status'] for row in state['configEffects'].values()] == ['confirmed', 'refused']
         assert len((root / 'settings.jsonl').read_text().splitlines()) == 2

@@ -175,7 +175,7 @@ print(platform.python_version())
     environment.update(TUI_CONNECTED_EXECUTABLE=str(state / 'consumer/bin/amplifier-unified-client-tui'),
                        TUI_EVIDENCE_DIR=str(logs), PYTHONPATH='')
     junit = state / 'installed-terminal.xml'
-    run('installed-terminal', [str(tools), '-m', 'pytest', '-q', 'tests/test_ahp_terminal.py',
+    run('installed-terminal', [str(tools), '-m', 'pytest', '-q', str(ROOT / 'tests/test_ahp_terminal.py'),
         '--basetemp', str(state / 'profiles'), '--junitxml', str(junit)], logs, environment, source)
     cases = ET.parse(junit).findall('.//testcase')
     if len(cases) != 5 or any(case.find(name) is not None for case in cases
@@ -192,8 +192,11 @@ print(platform.python_version())
         'managedPythonBasePrefixVerified': True, 'installedWheelPayloadFilesEqual': True,
         'runtimeExecutableHashes': {kind: sha(path) for kind, path in executables.items()},
         'installedIsolation': True, 'actualInstalledPTYPassed': 5, 'skipped': 0,
+        'draftPersistenceObserver': json.loads((logs / 'draft-persistence-observer.txt').read_text()),
         'testedOS': tested_os, 'minimumGlibc': platform.libc_ver()[1] if sys.platform == 'linux' else None,
-        'originalSourceQualificationRetained': True, 'logHashes': {f.name: sha(f) for f in logs.glob('*.txt')},
+        'originalSourceQualificationRetained': True,
+        'testObserverCommit': subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip(),
+        'logHashes': {f.name: sha(f) for f in logs.glob('*.txt')},
         'limits': ['Supplement to original build qualification; no source or native rebuild',
                    'Deterministic independent public-host/provider fixtures',
                    'No account, physical-device, older-OS or live deployment acceptance']}
