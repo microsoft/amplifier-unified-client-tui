@@ -331,6 +331,7 @@ async def test_rapid_selection_commits_in_order_and_never_shows_pending_scope(tm
         await asyncio.Event().wait()
     transport.resolve_session, transport.snapshot = resolve, snapshot
     bridge.watch = watch
+    transport.url, transport.optional_unavailable = 'ws://localhost/ahp', {}
     first = asyncio.create_task(bridge.select('ahp-session:/first'))
     await asyncio.sleep(0)
     last = asyncio.create_task(bridge.select('ahp-session:/last'))
