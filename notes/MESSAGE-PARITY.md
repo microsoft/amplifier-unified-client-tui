@@ -42,3 +42,10 @@ and offline. Original text/quote remain recoverable as private evidence; neither
 inspection nor subsequent host observations overwrites newer drafts/quotes or resends
 work. The stale digest fixture asserts native refusal and no provider execution, while
 the frozen original retains its source excerpt and deliberately stale locator.
+
+Follow-on watch audit: the web implementation uses public `createResourceWatch`,
+standard `resourceWatch/changed`, and scoped capability `resourceRead`. The upstream
+SDK owns resource-watch state/recovery. The native capability owner publishes only
+bounded changed-message metadata. The TUI currently has explicit snapshots; the
+follow-on maps one selected watch, coalesces reads, validates original scope and
+monotonic revisions, and releases/re-establishes subscriptions without replay.

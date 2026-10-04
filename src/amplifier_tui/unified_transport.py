@@ -101,6 +101,7 @@ class Transport:
         self.closed = False
         self.optional_unavailable = {}
         self.client_tool = None
+        self.message_metadata = None
         self.tool_tasks = set()
 
     async def open(self):
@@ -147,6 +148,8 @@ class Transport:
                     task = asyncio.create_task(self._client_tool(packet))
                     self.tool_tasks.add(task)
                     task.add_done_callback(self.tool_tasks.discard)
+                elif event == 'messageMetadata' and self.message_metadata:
+                    self.message_metadata(packet)
                 elif event == 'optionalUnavailable':
                     self.optional_unavailable[packet['capability']] = packet['message']
                 elif event == 'connection':

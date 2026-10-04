@@ -52,6 +52,7 @@ class Messages:
         self.refreshing = set()
         self.preview_key = None
         self.descriptors = {}
+        self.record_revisions = {}
 
     def quote_supported(self):
         descriptor = self.descriptors.get(self.bridge.selected)
@@ -243,6 +244,37 @@ class Messages:
         except (Rejected, OSError, ValueError, TimeoutError):
             if self.bridge.selected == target:
                 self.bridge.send('system', lines=['Saved message references are unavailable. Open Messages and refresh saved messages; your draft is kept.'])
+
+    def accept(self, packet):
+        scope, record = packet.get('scope'), packet.get('record')
+        if scope != self.bridge.selected or not isinstance(record, dict):
+            return
+        revision, data = record.get('revision'), record.get('data')
+        key = (scope, getattr(self.bridge.transport, 'generation', 0))
+        if (record.get('scope') != scope or record.get('topic') != 'message-metadata'
+                or type(revision) is not int or revision < 0 or not isinstance(data, dict)
+                or revision <= self.record_revisions.get(key, -1)):
+            return
+        self.record_revisions[key] = revision
+        if len(self.record_revisions) > 32:
+            self.record_revisions.pop(next(iter(self.record_revisions)))
+        if isinstance(data.get('quote'), dict):
+            self.descriptors[scope] = data
+            if len(self.descriptors) > 32:
+                self.descriptors.pop(next(iter(self.descriptors)))
+        changed = data.get('changedMessage')
+        if isinstance(changed, dict):
+            locator = next((reference(row.get('messageReference'), reaction=True)
+                            for row in self.bridge.session.get('messages', [])
+                            if isinstance(row.get('messageReference'), dict)
+                            and row['messageReference'].get('messageId') == changed.get('messageId')
+                            and not row.get('historicalOnly')), None)
+            if locator:
+                try:
+                    self.merge(scope, changed, locator)
+                except ValueError:
+                    return
+        self.bridge.publish()
 
     def merge(self, scope, value, locator):
         row = reaction_row(value)

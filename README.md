@@ -81,7 +81,9 @@ Quoted Send saves the complete frozen submission privately before dispatch. `/de
 shows its original text, quote and command even after host admission or unknown native
 execution. Inspect original quoted submission is read-only and works offline; it never
 resends or replaces a newer draft/quote. Host admission alone does not prove execution.
-Counts represent the last explicit read or confirmed action; reopen Inspect to refresh.
+A negotiated watch updates selected saved-message counts as other clients react.
+Reconnect restores a read-only baseline; explicit Inspect refreshes current counts if
+updates are unavailable. Watches never settle unknown original requests.
 
 Permission choices preserve the options supplied by the agent. Stop uses standard
 cancel; it does not promise force termination or undo. Rename changes the shared

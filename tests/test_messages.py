@@ -236,3 +236,29 @@ async def test_original_quoted_submission_survives_admission_unknown_and_newer_p
     assert bridge.messages.submissions()[identity]['quote'] == quote
     assert bridge.messages.submissions()[identity]['args']['text'] == 'Private unsent text'
     bridge.store.close()
+
+
+def test_selected_watch_is_monotonic_and_never_settles_unknown_intent(tmp_path):
+    bridge, transport, events = setup(tmp_path)
+    scope = bridge.selected
+    unknown = {'session': scope, 'operation': 'message.reaction', 'status': 'unknown',
+               'args': {'reference': LOCATOR, 'emoji': '👍', 'present': True}}
+    bridge.store.data['messageEffects'] = {'original': deepcopy(unknown)}
+    def update(revision, message_revision, mine, target=scope):
+        return {'scope': target, 'record': {'topic': 'message-metadata', 'scope': target,
+                'revision': revision, 'data': {'available': True, 'changedMessage': {
+                **transport.row(), 'revision': message_revision, 'reactions': mine,
+                'mine': mine, 'counts': {emoji: 1 for emoji in mine}}}}}
+    bridge.messages.accept(update(5, 3, ['✅']))
+    assert bridge.messages.rows[(scope, LOCATOR['messageId'])]['mine'] == ['✅']
+    bridge.messages.accept(update(4, 2, ['👍']))
+    bridge.messages.accept(update(6, 1, ['👍']))
+    assert bridge.messages.rows[(scope, LOCATOR['messageId'])]['mine'] == ['✅']
+    transport.generation = 1
+    bridge.messages.accept(update(0, 4, ['🎉']))
+    assert bridge.messages.rows[(scope, LOCATOR['messageId'])]['mine'] == ['🎉']
+    before = len(events)
+    bridge.messages.accept(update(10, 100, ['👍'], 'ahp-session:/other'))
+    assert len(events) == before
+    assert bridge.store.data['messageEffects']['original'] == unknown and not transport.calls
+    bridge.store.close()

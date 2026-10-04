@@ -25,6 +25,7 @@ class UnifiedBridge:
         self.published_controls = None
         self.session = {}
         self.messages = Messages(self)
+        self.transport.message_metadata = self.messages.accept
         self.actions = set()
         self.pump = None
         self.tasks = set()
