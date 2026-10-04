@@ -41,3 +41,11 @@ RELEASE-01 review repair: refuse nonregular/symlink input through no-follow,
 nonblocking descriptors before reading. Bound JSON at MAX_BYTES+1, stream wheel
 hash/copy within declared bytes, and reject descriptor/path identity or content
 changes. Preserve f6 evidence; requalify a separate successor before adoption.
+
+Unknown-delivery fixture synchronization (continuity.v1:2, continuity.v1:4):
+host admission does not prove the original provider prompt has started. Before
+injecting an unknown receipt, wait within the existing ten-second bound for a
+complete original audit record and validate its exact command identity and text
+against the private intent journal. Missing, malformed or wrong records fail;
+retain read-only retry, unchanged provider audit and unknown-status assertions.
+This changes test ordering only; earlier qualified source identities remain intact.
