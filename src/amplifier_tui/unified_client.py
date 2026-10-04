@@ -345,19 +345,11 @@ class UnifiedBridge:
                 self.reconcile(snapshot)
                 self.messages.finish_selection(token, committed=True)
                 self.pump = asyncio.create_task(self.watch(identity, self.generation))
-                if 'session.warm' in self.actions:
-                    self.later(self.warm(identity))
             except BaseException:
                 self.transport.selected = None
                 raise
             finally:
                 self.messages.finish_selection(token)
-
-    async def warm(self, identity):
-        try:
-            await self.transport.command(identity, 'session.warm', {}, str(uuid.uuid4()))
-        except (Rejected, ValueError, OSError):
-            pass  # Preparation is advisory; ordinary send/ownership status remains authoritative.
 
     async def host_review(self, purpose, target):
         if not target:

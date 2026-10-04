@@ -88,3 +88,7 @@ The supplemental observer commit is separate from the unchanged sealed wheel's
 731 source; historical 4-pass/1-failure evidence and final teardown state remain.
 
 The persistence observer controls run with the exact verified managed Python after Root extraction. Linux runner bootstrap Python 3.10 lacks asyncio.timeout; this interpreter placement correction leaves observer assertions and product bytes unchanged.
+
+| REUSE-01 | composition.v1:2, continuity.v1:6, continuity.v1:7 | User-approved on-demand agents and automatic host-managed bounded reuse | No terminal pool controls or navigation-triggered preparation; host preserves history/running work | Source-only removal of optional session.warm on selection; runtime qualification pending allocation clearance |
+
+REUSE-01 source inventory: connected launch flags, standard-schema settings, native menus/navigation, and the packaged SDK sidecar contain no legacy Ready conversations or warm-pool setting. Selection previously scheduled an optional session.warm action. Remove only that advisory preparation; keep snapshot/subscription, private draft persistence, cancellation and execution actions unchanged. Host owners remove legacy schema fields and own reuse bounds. After allocation clearance, qualify an independent host advertising session.warm: open/switch/reconnect must issue no preparation command, explicit Send must still work, and drafts, retained history and running work must survive detach and selection. Existing sealed wheel receipts describe their original bytes.
