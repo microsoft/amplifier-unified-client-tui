@@ -8,7 +8,7 @@ import subprocess
 import sys
 import tarfile
 import xml.etree.ElementTree as ET
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 from urllib.parse import urlparse
 from urllib.request import HTTPRedirectHandler, build_opener
 
@@ -30,25 +30,22 @@ def sha(path):
     return digest.hexdigest()
 
 
-def extract(archive, destination, archive_root):
-    # All payload bytes have already been verified. Reject special files and
-    # ambiguous paths, bound expansion, and retain data-filter link checks.
+def bootstrap_node(archive, destination, descriptor):
+    # Match the renderer's bootstrap: read one exact regular member from the
+    # checksum-verified Node archive. No archive path is written or followed.
+    expected = descriptor['archiveRoot'] + '/' + descriptor['executable']
     with tarfile.open(archive, 'r:gz') as tar:
-        members = []
-        total = 0
-        for member in tar:
-            name = PurePosixPath(member.name)
-            total += member.size
-            if (len(members) >= 25000 or total > 768 * 1024 * 1024
-                    or name.is_absolute() or not name.parts
-                    or name.parts[0] != archive_root or '..' in name.parts
-                    or '\\' in member.name
-                    or not (member.isfile() or member.isdir() or member.issym() or member.islnk())):
-                raise ValueError('Unsupported managed runtime archive')
-            members.append(member)
-        destination.mkdir()
-        tar.extractall(destination, members=members, filter='data')
-    return destination / archive_root
+        members = tar.getmembers()
+        matches = [member for member in members if member.name == expected]
+        if (len(members) > 25000 or len(matches) != 1 or not matches[0].isfile()
+                or not 1 <= matches[0].size <= 256 * 1024 * 1024):
+            raise ValueError('Exact regular Node bootstrap member required')
+        with tar.extractfile(matches[0]) as source, destination.open('xb') as output:
+            for chunk in iter(lambda: source.read(65536), b''):
+                output.write(chunk)
+    destination.chmod(0o700)
+    return destination
+
 
 
 def download(descriptor, path):
@@ -103,10 +100,24 @@ def main():
                           str(assets / 'manifest.json'), '--verify-assets'], logs, environment, source)
     runtimes = json.loads(json.dumps(spec['runtimes']))
     executables = {}
-    for kind, runtime in runtimes.items():
+    inputs = ROOT / '.state/inputs'
+    peer = inputs / '.qualification-inputs/terminal-install-client.mjs'
+    peer_sha = '070181c73c016612d42c8afc668576665026405c3347ca76d28e8c8c7ba7fd6b'
+    peer_source = 'e5ce9512bbf1e2cbf8dbff5ef53049d1f27f71ad'
+    provenance = json.loads((peer.parent / 'extractor-source.json').read_text())
+    if sha(peer) != peer_sha or provenance['sha256'] != peer_sha or provenance['sourceCommit'] != peer_source:
+        raise ValueError('Reviewed Root extraction peer changed')
+    bootstrap = None
+    for kind in ['node', 'python']:
+        runtime = runtimes[kind]
         archive = state / (kind + '.tar.gz')
         download(runtime, archive)
-        directory = extract(archive, state / kind, runtime['archiveRoot'])
+        if kind == 'node':
+            bootstrap = bootstrap_node(archive, state / 'bootstrap-node', runtime)
+        directory = state / kind
+        run(kind + '-root-extraction', [str(bootstrap), '--input-type=module', '-e',
+            "const {extractRuntime}=await import(process.argv[1]); await extractRuntime(...process.argv.slice(2));",
+            peer.as_uri(), str(archive), str(directory), runtime['archiveRoot']], logs, environment, ROOT)
         executable = directory / runtime['executable']
         if not executable.is_file() or not os.access(executable, os.X_OK):
             raise ValueError('Managed executable missing')
@@ -116,6 +127,8 @@ def main():
             raise ValueError('Managed executable version mismatch')
         if kind == 'node':
             runtime['executableSha256'] = sha(executable)
+            if runtime['executableSha256'] != sha(bootstrap):
+                raise ValueError('Root-extracted Node differs from verified bootstrap')
             actual = json.loads(subprocess.check_output([str(executable), '-p',
                 'JSON.stringify({os:process.platform,arch:process.arch})'], text=True))
             if actual != {'os': 'linux' if arguments.target.startswith('linux') else 'darwin', 'arch': 'x64'}:
@@ -127,7 +140,6 @@ def main():
                 raise ValueError('Managed Python target mismatch')
     environment['PATH'] = str(executables['node'].parent) + os.pathsep + environment['PATH']
     environment.update(AMPLIFIER_TUI_NODE=str(executables['node']), TUI_TEST_CANDIDATES='1')
-    inputs = ROOT / '.state/inputs'
     run('independent-host', [sys.executable, 'scripts/prepare_qualification_host.py',
         '--fixture-sha256', '54e53991d0acbdd3e0547379de7c41f04e65b0ff70653cd92b2d03b2d13ccb0f'],
         logs, environment, inputs)
@@ -176,6 +188,7 @@ print(platform.python_version())
         'platform': arguments.target, 'wheelSha256': spec['wheelSha256'], 'wheelFilename': wheel.name,
         'originalManifestSha256': spec['manifestSha256'], 'runtimes': runtimes,
         'managedArchiveDownloadsVerified': True, 'managedArchiveExtractionVerified': True,
+        'extractionPeer': {'sourceCommit': peer_source, 'fileSha256': peer_sha, 'method': 'Root exported extractRuntime'},
         'managedPythonBasePrefixVerified': True, 'installedWheelPayloadFilesEqual': True,
         'runtimeExecutableHashes': {kind: sha(path) for kind, path in executables.items()},
         'installedIsolation': True, 'actualInstalledPTYPassed': 5, 'skipped': 0,

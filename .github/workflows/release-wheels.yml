@@ -138,7 +138,7 @@ jobs:
       - name: Check out reviewed same-repository independent host input
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
-          ref: f7f49e2706ea9f3c4b145f13ca2b3b6bafdce11b
+          ref: 7f67c33759ed1148483f64ebcf0b54054155ccbe
           path: .state/inputs
           sparse-checkout: |
             .qualification-inputs

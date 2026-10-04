@@ -72,3 +72,9 @@ same-repository host inputs and previously sealed wheel artifacts; no client
 behavior change, native rebuild, user credentials, publication, or feed binding.
 Keep managed-runtime acceptance distinct from earlier system/runner-cache
 qualification and from account, physical-device, older-OS, or live acceptance.
+
+The supplement uses the reviewed standalone Root install client's exported safe
+extraction API as a provenance-bound test peer. Bootstrap reads only the exact
+regular Node member from its verified archive. Root's bounded no-link-traversal
+policy then unpacks both archives; escaping links and special files still refuse.
+The earlier Python 3.10 tarfile refusal and earlier Mac success remain separate.
