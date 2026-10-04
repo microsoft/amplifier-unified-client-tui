@@ -51,3 +51,9 @@ release authority; the manifest cannot redirect downloads to arbitrary URLs.
 Malformed newest candidates must fail visibly rather than silently downgrade.
 There is no evidence of real account access, physical-device use, production
 installation or release adoption merely because these artifacts pass.
+
+Installer-facing manifest/evidence reads open regular files with no-follow and
+nonblocking flags and refuse size above 128 KiB before parsing or hashing. Wheel
+hashes and verified copies stream at most the declared bytes plus one growth
+probe, with descriptor and path identity/size/time checks before accepting.
+FIFOs, symlinks, replaced files and changed contents refuse rather than blocking.

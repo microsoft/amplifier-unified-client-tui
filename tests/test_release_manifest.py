@@ -1,7 +1,11 @@
 """Release candidates fail closed on wrong source, target, or evidence."""
 import copy
 import json
+import os
 import runpy
+import subprocess
+import sys
+import tracemalloc
 from pathlib import Path
 
 import pytest
@@ -63,7 +67,7 @@ def test_exact_asset_and_evidence_binding(tmp_path):
     API['verify_assets'](manifest, tmp_path / 'candidate')
     wheel = tmp_path / 'candidate' / manifest['artifacts'][0]['filename']
     wheel.write_bytes(wheel.read_bytes() + b'changed')
-    with pytest.raises(ValueError, match='bytes/hash'):
+    with pytest.raises(ValueError, match='bytes'):
         API['verify_assets'](manifest, tmp_path / 'candidate')
 
 
@@ -119,3 +123,95 @@ def test_schema_identity_matches_public_contract():
     assert schema['properties']['format']['const'] == API['FORMAT']
     assert schema['properties']['compatibility']['const'] == API['COMPATIBILITY']
     assert schema['properties']['artifacts']['maxItems'] == API['MAX_ARTIFACTS']
+
+
+@pytest.mark.parametrize('kind', ['manifest', 'evidence', 'wheel'])
+def test_fifo_inputs_refuse_without_waiting_for_writer(tmp_path, kind):
+    manifest = fixture(tmp_path / 'candidate')
+    if kind == 'manifest':
+        path = tmp_path / 'manifest.fifo'
+        expression = 'api["load"](path)'
+    else:
+        item = manifest['artifacts'][0]
+        path = tmp_path / 'candidate' / (item['filename'] if kind == 'wheel' else item['qualification']['evidenceFilename'])
+        path.unlink()
+        expression = 'api["verify_assets"](manifest, path.parent)'
+    os.mkfifo(path)
+    code = ('import runpy,json; from pathlib import Path; api=runpy.run_path(' + repr(API['__file__']) + '); '
+            + 'path=Path(' + repr(str(path)) + '); manifest=json.loads(' + repr(json.dumps(manifest)) + '); '
+            + expression)
+    result = subprocess.run([sys.executable, '-I', '-B', '-c', code], timeout=2, capture_output=True)
+    assert result.returncode != 0 and b'ValueError' in result.stderr
+
+
+@pytest.mark.parametrize('kind', ['load', 'digest', 'evidence'])
+def test_large_json_rejected_before_large_allocation(tmp_path, kind):
+    manifest = fixture(tmp_path / 'candidate')
+    path = tmp_path / 'large.json'
+    if kind == 'evidence':
+        path = tmp_path / 'candidate' / manifest['artifacts'][0]['qualification']['evidenceFilename']
+    with path.open('wb') as stream:
+        stream.truncate(8 * 1024 * 1024)
+    tracemalloc.start()
+    try:
+        with pytest.raises(ValueError):
+            if kind == 'evidence':
+                API['verify_assets'](manifest, path.parent)
+            else:
+                API[kind](path)
+        _, peak = tracemalloc.get_traced_memory()
+    finally:
+        tracemalloc.stop()
+    assert peak < API['MAX_BYTES'] * 4
+
+
+@pytest.mark.parametrize('kind', ['load', 'digest'])
+def test_symlink_inputs_refuse(tmp_path, kind):
+    actual = tmp_path / 'actual.json'
+    actual.write_text('{}')
+    linked = tmp_path / 'linked.json'
+    linked.symlink_to(actual)
+    with pytest.raises(ValueError):
+        API[kind](linked)
+
+
+@pytest.mark.parametrize('change', ['replace', 'grow'])
+def test_descriptor_or_contents_changing_during_read_refuse(tmp_path, monkeypatch, change):
+    path = tmp_path / 'input.json'
+    path.write_text('{}')
+    original = os.read
+    changed = False
+    def changing(fd, count):
+        nonlocal changed
+        data = original(fd, count)
+        if data and not changed:
+            changed = True
+            if change == 'replace':
+                replacement = tmp_path / 'replacement'
+                replacement.write_text('{}')
+                replacement.replace(path)
+            else:
+                with path.open('ab') as stream:
+                    stream.write(b' ' * (API['MAX_BYTES'] * 2))
+        return data
+    monkeypatch.setattr(os, 'read', changing)
+    with pytest.raises(ValueError):
+        API['load'](path)
+
+
+def test_wheel_growth_read_stops_at_declared_bytes_plus_one(tmp_path, monkeypatch):
+    path = tmp_path / 'wheel.whl'
+    path.write_bytes(b'abc')
+    original = os.read
+    reads = []
+    def growing(fd, count):
+        reads.append(count)
+        data = original(fd, count)
+        if len(reads) == 1:
+            with path.open('ab') as stream:
+                stream.write(b'x' * 10000)
+        return data
+    monkeypatch.setattr(os, 'read', growing)
+    with pytest.raises(ValueError):
+        API['digest'](path, max_bytes=API['MAX_WHEEL_BYTES'], expected_bytes=3)
+    assert max(reads) <= 4

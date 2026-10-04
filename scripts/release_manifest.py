@@ -2,10 +2,12 @@
 import argparse
 import hashlib
 import json
+import os
 import re
-import shutil
+import stat
 import subprocess
 import zipfile
+from contextlib import contextmanager
 from pathlib import Path
 
 FORMAT = 'amplifier-unified-client-tui.release'
@@ -15,6 +17,9 @@ COMPATIBILITY = {'ahpVersions': ['0.9.0'], 'sdkVersion': '0.9.0',
                  'pythonRequires': '>=3.11', 'nodeRequires': '>=22'}
 MAX_BYTES = 128 * 1024
 MAX_ARTIFACTS = 16
+MAX_WHEEL_BYTES = 256 * 1024 * 1024
+MAX_LOG_BYTES = 16 * 1024 * 1024
+CHUNK_BYTES = 64 * 1024
 HEX = re.compile(r'[0-9a-f]{64}')
 VERSION = re.compile(r'[0-9]+\.[0-9]+\.[0-9]+(?:rc[0-9]+)?')
 ASSET = re.compile(r'[A-Za-z0-9][A-Za-z0-9_.-]{0,199}')
@@ -23,8 +28,65 @@ CHECKS = ['protocol-install', 'protocol-build', 'native-build', 'native-tests', 
           'installed-isolation', 'installed-terminal']
 
 
-def digest(path):
-    return hashlib.sha256(path.read_bytes()).hexdigest()
+def fingerprint(value):
+    return (value.st_dev, value.st_ino, value.st_mode, value.st_size,
+            value.st_mtime_ns, value.st_ctime_ns)
+
+
+@contextmanager
+def regular(path, limit, expected_bytes=None):
+    if type(limit) is not int or limit < 1 or (expected_bytes is not None
+            and (type(expected_bytes) is not int or not 0 < expected_bytes <= limit)):
+        raise ValueError('Invalid file byte bound')
+    fd = None
+    try:
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+        before = os.fstat(fd)
+        if not stat.S_ISREG(before.st_mode):
+            raise ValueError('Input must be a regular file')
+        if before.st_size > limit or (expected_bytes is not None and before.st_size != expected_bytes):
+            raise ValueError('File bytes exceed or differ from bound')
+        yield fd, before.st_size
+        if (fingerprint(os.fstat(fd)) != fingerprint(before)
+                or fingerprint(os.lstat(path)) != fingerprint(before)):
+            raise ValueError('Input changed during verification')
+    except OSError as exc:
+        raise ValueError('Input cannot be opened as a stable regular file') from exc
+    finally:
+        if fd is not None:
+            os.close(fd)
+
+
+def read_file(path, limit, *, expected_bytes=None, collect=False, sink=None):
+    hasher, data, count = hashlib.sha256(), bytearray(), 0
+    read_bound = expected_bytes if expected_bytes is not None else limit
+    with regular(path, limit, expected_bytes) as (fd, size):
+        while True:
+            chunk = os.read(fd, min(CHUNK_BYTES, read_bound + 1 - count))
+            if not chunk:
+                break
+            count += len(chunk)
+            if count > read_bound:
+                raise ValueError('File grew beyond byte bound')
+            hasher.update(chunk)
+            if collect:
+                data.extend(chunk)
+            if sink:
+                sink.write(chunk)
+        if count != size:
+            raise ValueError('Input size changed during verification')
+    return bytes(data), hasher.hexdigest()
+
+
+def digest(path, *, max_bytes=MAX_BYTES, expected_bytes=None):
+    return read_file(path, max_bytes, expected_bytes=expected_bytes)[1]
+
+
+def copy_asset(source, destination, *, max_bytes, expected_sha, expected_bytes=None):
+    with destination.open('xb') as sink:
+        _, actual = read_file(source, max_bytes, expected_bytes=expected_bytes, sink=sink)
+    if actual != expected_sha:
+        raise ValueError('Asset changed before copying')
 
 
 def fields(value, keys):
@@ -55,10 +117,10 @@ def target(tag):
     return {'os': 'macos', 'arch': match[5], 'wheelTag': tag, 'osFloor': f'{match[3]}.{match[4]}'}
 
 
-def load(path):
-    data = Path(path).read_bytes()
-    if len(data) > MAX_BYTES:
-        raise ValueError('Manifest exceeds byte limit')
+def load(path, *, expected_sha=None):
+    data, actual_sha = read_file(path, MAX_BYTES, collect=True)
+    if expected_sha is not None and actual_sha != expected_sha:
+        raise ValueError('Evidence bytes/hash mismatch')
     def unique(pairs):
         result = {}
         for key, value in pairs:
@@ -130,9 +192,9 @@ def verify_assets(value, directory):
         wheel = directory / item['filename']
         q = item['qualification']
         evidence = directory / q['evidenceFilename']
-        if wheel.stat().st_size != item['bytes'] or digest(wheel) != item['sha256'] or digest(evidence) != q['evidenceSha256']:
+        if digest(wheel, max_bytes=MAX_WHEEL_BYTES, expected_bytes=item['bytes']) != item['sha256']:
             raise ValueError('Release asset bytes/hash mismatch')
-        proof = load(evidence)
+        proof = load(evidence, expected_sha=q['evidenceSha256'])
         fields(proof, ['format', 'schemaVersion', 'package', 'source', 'compatibility', 'wheel', 'qualification', 'checks', 'checkLogHashes', 'limits'])
         if proof['format'] != FORMAT + '.qualification' or type(proof['schemaVersion']) is not int or proof['schemaVersion'] != 1:
             raise ValueError('Unsupported evidence format')
@@ -164,7 +226,7 @@ def export(root, output, expected_target=None):
         raise ValueError('Qualification must bind exact clean source')
     name = asset(receipt['wheel'])
     wheel = root / 'dist' / name
-    if digest(wheel) != receipt['sha256'] or wheel.stat().st_size != receipt['bytes']:
+    if digest(wheel, max_bytes=MAX_WHEEL_BYTES, expected_bytes=receipt['bytes']) != receipt['sha256']:
         raise ValueError('Wheel changed after qualification')
     actual_target = target(receipt['wheelTag'])
     if expected_target and expected_target != actual_target['os'] + '-' + actual_target['arch']:
@@ -172,8 +234,10 @@ def export(root, output, expected_target=None):
     q = receipt['releaseQualification']
     if q['status'] != 'qualified':
         raise ValueError('Incomplete installed qualification')
-    with zipfile.ZipFile(wheel) as archive:
+    with regular(wheel, MAX_WHEEL_BYTES, receipt['bytes']) as (fd, _), os.fdopen(os.dup(fd), 'rb') as reader, zipfile.ZipFile(reader) as archive:
         metadata = next(n for n in archive.namelist() if n.endswith('.dist-info/METADATA'))
+        if archive.getinfo(metadata).file_size > MAX_BYTES:
+            raise ValueError('Wheel metadata exceeds byte bound')
         headers = dict(line.split(': ', 1) for line in archive.read(metadata).decode().split('\n\n', 1)[0].splitlines() if ': ' in line)
         if headers['Name'] != PACKAGE or headers['Version'] != receipt['version'] or headers['Requires-Python'] != '>=3.11':
             raise ValueError('Wrong installed package metadata')
@@ -182,12 +246,12 @@ def export(root, output, expected_target=None):
                'source': {'repository': REPOSITORY, 'commit': commit}, 'compatibility': COMPATIBILITY,
                'wheel': {'filename': name, 'bytes': receipt['bytes'], 'sha256': receipt['sha256'], 'target': target(receipt['wheelTag'])},
                'qualification': q, 'checks': {name: 'passed' for name in CHECKS},
-               'checkLogHashes': {name: digest(root / '.evidence/current' / (name + '.txt')) for name in CHECKS},
+               'checkLogHashes': {name: digest(root / '.evidence/current' / (name + '.txt'), max_bytes=MAX_LOG_BYTES) for name in CHECKS},
                'limits': ['Deterministic local public-host/provider fixtures', 'No real account, physical device or production deployment acceptance']}
     output.mkdir(parents=True, exist_ok=False)
     evidence_name = name.removesuffix('.whl') + '.qualification.json'
     write(output / evidence_name, summary)
-    shutil.copy2(wheel, output / name)
+    copy_asset(wheel, output / name, max_bytes=MAX_WHEEL_BYTES, expected_bytes=receipt['bytes'], expected_sha=receipt['sha256'])
     value = {'format': FORMAT, 'schemaVersion': 1, 'package': summary['package'], 'source': summary['source'],
              'compatibility': COMPATIBILITY, 'artifacts': [{**summary['wheel'], 'qualification': {
                  **q, 'evidenceFilename': evidence_name, 'evidenceSha256': digest(output / evidence_name)}}]}
@@ -212,7 +276,11 @@ def assemble(inputs, output):
     for path, value in zip(inputs, values):
         for item in value['artifacts']:
             for name in [item['filename'], item['qualification']['evidenceFilename']]:
-                shutil.copy2(Path(path).parent / name, output / name)
+                is_wheel = name == item['filename']
+                copy_asset(Path(path).parent / name, output / name,
+                    max_bytes=MAX_WHEEL_BYTES if is_wheel else MAX_BYTES,
+                    expected_bytes=item['bytes'] if is_wheel else None,
+                    expected_sha=item['sha256'] if is_wheel else item['qualification']['evidenceSha256'])
     verify_assets(result, output)
     write(output / 'manifest.json', result)
     return result
