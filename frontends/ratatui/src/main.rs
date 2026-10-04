@@ -662,6 +662,14 @@ impl App {
                     let id = string(row, "id");
                     let status = string(row, "status");
                     let text = row["args"]["text"].as_str().unwrap_or("");
+                    if row["quotedSubmission"] == true {
+                        choices.push(interaction::Choice {
+                            label: format!("Inspect original quoted submission · {}", safe(text).chars().take(40).collect::<String>()),
+                            action: Action::QuotedSubmission(id.clone()),
+                            detail: format!("Original request: {id}\nHost admission: {}\nNative execution: {}\nFrozen text and quote remain private. Inspection never resends or changes your draft.", string(row,"admission"), string(row,"execution")),
+                        });
+                        continue;
+                    }
                     let detail = safe(&format!(
                         "Delivery: {status}\n{}\n\nRetained input:\n{text}\n\nRequest: {id}\nChecking reads the original receipt; it never sends another message.",
                         string(row, "error")
@@ -1281,7 +1289,7 @@ impl App {
                     };
                     self.activate(action);
                 }
-                "message.reply" | "message.replyClear" | "message.read" | "message.reaction" | "message.receipt" | "message.refresh" => {
+                "message.reply" | "message.replyClear" | "message.read" | "message.reaction" | "message.receipt" | "message.refresh" | "message.submissionInspect" => {
                     // Authorize against the live renderer revision; the backend
                     // applies the same selected-session action as human controls.
                 }
@@ -1291,7 +1299,7 @@ impl App {
         }
         let mut result = json!({"accepted":true,"session":self.nav.session,"revision":self.client_revision,
             "view":self.view,"busy":self.flow.busy,"switchPending":self.nav.switching.is_some(),
-            "actions":["draft.replace","view.select","panel.open","message.reply","message.replyClear","message.read","message.reaction","message.receipt","message.refresh"]});
+            "actions":["draft.replace","view.select","panel.open","message.reply","message.replyClear","message.read","message.reaction","message.receipt","message.refresh","message.submissionInspect"]});
         result["messages"] = json!(self.items.iter().filter(|item| matches!(item.kind.as_str(), "user" | "assistant"))
             .rev().take(50).map(|item| json!({"id":item.id,"role":item.kind,"preview":item.text.chars().take(400).collect::<String>(),
                 "quotable":self.ui.quote_available && !item.reference.is_null() && !item.historical_only,

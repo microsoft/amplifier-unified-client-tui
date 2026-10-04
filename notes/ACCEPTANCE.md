@@ -34,3 +34,15 @@ injection. The observer drains the PTY while awaiting receipts; native standard 
 requests graceful cancellation rather than force-terminating a blocked provider.
 See [class inventory and limits](MESSAGE-PARITY.md). Automatic reaction metadata watch
 remains unmapped; counts update through explicit Inspect and confirmed actions.
+
+The quoted-submission preservation repair passed 124 Python checks with 7 gated
+skips, 79 Rust checks and 5 installed standard-host terminal checks. Exact installed
+Python and message-capable PTYs passed 3 tests in 16.88 seconds. A structurally valid
+stale quote digest was explicitly sent; native refused it before provider execution,
+while the complete frozen private text/quote survived under the original command
+across reload. Installed Deliveries inspection and exact clipboard evidence capture
+preserved a newer draft and quote and admitted no additional turn. Admission remains
+separate from native execution, and no unknown submission was replayed.
+Canonical-reference setup uses the offered explicit selected history refresh when a
+fresh fixture's settled marker has not reached the initial snapshot. This does not
+establish general historical-marker publication or new live worker adoption.

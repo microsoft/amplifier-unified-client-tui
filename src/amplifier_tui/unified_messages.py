@@ -115,6 +115,62 @@ class Messages:
                 raise ValueError('Saved reaction evidence could not be verified. Original storage was preserved.')
         return effects
 
+    def submissions(self):
+        rows = self.bridge.store.data.get('quotedSubmissions', {})
+        if not isinstance(rows, dict):
+            raise ValueError('Original quoted submissions could not be read. Private storage was preserved.')
+        for command, row in rows.items():
+            args = row.get('args') if isinstance(row, dict) else None
+            quote = row.get('quote') if isinstance(row, dict) else None
+            if (not isinstance(command, str) or not 0 < len(command) <= 256
+                    or not isinstance(row, dict) or not isinstance(row.get('session'), str)
+                    or row.get('action') != 'conversation.send' or row.get('quotedSubmission') is not True
+                    or row.get('admission') not in {'accepted', 'unconfirmed', 'refused'}
+                    or row.get('execution') != 'unverified'
+                    or not isinstance(args, dict) or not isinstance(args.get('text'), str)
+                    or not isinstance(quote, dict) or quote.get('sessionId') != row['session']
+                    or not isinstance(quote.get('id'), str) or not 0 < len(quote['id']) <= 256
+                    or quote.get('role') not in {'user', 'assistant'} or args.get('replyId') != quote['id']
+                    or not reference(quote.get('reference')) or args.get('reply') != quote['reference']
+                    or not isinstance(quote.get('excerpt'), str) or len(quote['excerpt']) > 4000):
+                raise ValueError('Original quoted submission could not be verified. Private storage was preserved.')
+        return rows
+
+    def retain_submission(self, command, row):
+        quote = row.get('quote')
+        if quote is None:
+            return
+        rows = self.submissions()
+        if command in rows:
+            return
+        if len(rows) >= 512:
+            raise ValueError('Original quoted submissions are full. Your draft and quote are retained.')
+        original = {'session': row['session'], 'action': row['action'],
+                    'args': deepcopy(row['args']), 'quote': deepcopy(quote),
+                    'admission': 'unconfirmed', 'execution': 'unverified',
+                    'status': 'unknown', 'quotedSubmission': True}
+        self.bridge.store.data.setdefault('quotedSubmissions', rows)[command] = original
+        self.bridge.store.journal(command, original)
+
+    def admission(self, command, status):
+        rows = self.bridge.store.data.get('quotedSubmissions', {})
+        if not isinstance(rows, dict) or command not in rows:
+            return False
+        row = self.submissions().get(command)
+        if row and row.get('admission') != 'accepted' and row.get('admission') != status:
+            row['admission'] = status
+            self.bridge.store.journal(command, row)
+            return True
+        return False
+
+    def inspect_submission(self, command):
+        row = self.submissions().get(command)
+        if not row or row['session'] != self.bridge.selected:
+            raise ValueError('Select the original conversation before inspecting this quoted submission')
+        self.bridge.send('host_review', purpose='quoted-original', label='', detail=json.dumps({
+            'commandId': command, 'original': row,
+            'limits': 'Host admission does not prove native execution. This is the frozen private submission. Inspection and copying never repeat it or replace a newer draft or quote.'}, ensure_ascii=False))
+
     def select_quote(self, identity):
         self.quote()
         if not self.quote_supported():

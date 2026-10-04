@@ -32,3 +32,13 @@ physical devices or real provider/account acceptance. Shared counts are snapshot
 explicit reads and confirmed changes; automatic message metadata watch is not yet
 mapped in the terminal. Managed bundle/provider/model/effort launch flags and the
 standard mutable settings picker already shipped and are not new work in this change.
+
+Independent review found host admission could precede native stale-digest refusal,
+while the optimistic composer and outbox were already cleared. The repair saves a
+complete private frozen quoted submission before dispatch under its exact command.
+Admission updates that original record independently of execution; no native success
+is inferred. Selected Deliveries exposes read-only inspection, including after reload
+and offline. Original text/quote remain recoverable as private evidence; neither
+inspection nor subsequent host observations overwrites newer drafts/quotes or resends
+work. The stale digest fixture asserts native refusal and no provider execution, while
+the frozen original retains its source excerpt and deliberately stale locator.

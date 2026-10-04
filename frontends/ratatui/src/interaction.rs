@@ -45,6 +45,7 @@ pub(super) enum Action {
     MessageRead(String),
     MessageReaction(String, String, bool),
     MessageReceipt(String),
+    QuotedSubmission(String),
     RefreshMessages,
     Jump(String),
     CopyMessage(String),
@@ -360,6 +361,7 @@ impl App {
                             | Action::History
                             | Action::Messages
                             | Action::ClearReply
+                    | Action::QuotedSubmission(_)
                     )
                 })
                 .collect()
@@ -416,6 +418,7 @@ impl App {
                     | Action::Message(..)
                     | Action::Reply(..)
                     | Action::ClearReply
+                    | Action::QuotedSubmission(_)
                     | Action::Messages
                     | Action::CopyMessage(..)
                     | Action::CopySource(..)
@@ -831,6 +834,7 @@ impl App {
             Action::ClearReply => self.send(json!({"op":"message.replyClear"})),
             Action::MessageRead(id) => self.send(json!({"op":"message.read","message_id":id})),
             Action::MessageReaction(id, emoji, present) => self.send(json!({"op":"message.reaction","message_id":id,"emoji":emoji,"present":present})),
+            Action::QuotedSubmission(id) => self.send(json!({"op":"message.submissionInspect","id":id})),
             Action::MessageReceipt(id) => self.send(json!({"op":"message.receipt","id":id})),
             Action::RefreshMessages => self.send(json!({"op":"message.refresh"})),
             Action::Jump(id) => { if let Some(&i) = self.index.get(&id) { self.reveal_item(i); } }

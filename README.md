@@ -77,6 +77,10 @@ Inspect shared reactions reads the selected message. Add/Remove sets an offered 
 for the authenticated host account; it never sends a prompt. A lost acknowledgement
 blocks another change to that message until its original receipt is inspected. Current
 counts cannot prove an unknown request, and receipt inspection never repeats it.
+Quoted Send saves the complete frozen submission privately before dispatch. `/deliveries`
+shows its original text, quote and command even after host admission or unknown native
+execution. Inspect original quoted submission is read-only and works offline; it never
+resends or replaces a newer draft/quote. Host admission alone does not prove execution.
 Counts represent the last explicit read or confirmed action; reopen Inspect to refresh.
 
 Permission choices preserve the options supplied by the agent. Stop uses standard

@@ -200,3 +200,39 @@ def test_view_reset_republishes_private_quote_after_snapshot(tmp_path):
     controls = next(i for i, row in enumerate(events) if row['type'] == 'message_controls')
     assert controls > snapshot and events[controls]['quote'] == quote
     bridge.store.close()
+
+
+async def test_original_quoted_submission_survives_admission_unknown_and_newer_private_intent(tmp_path):
+    bridge, transport, events = setup(tmp_path)
+    bridge.actions = {'conversation.send'}
+    bridge.messages.select_quote('display-1')
+    quote = bridge.messages.quote()
+    async def command(scope, action, args, identity):
+        saved = bridge.messages.submissions()[identity]
+        assert saved['quote'] == quote and saved['args']['text'] == 'Private unsent text'
+        assert bridge.store.path.read_text().find(identity) >= 0
+        transport.calls.append((action, identity))
+        return {'delivery': 'unknown'}
+    transport.command = command
+    request = {'op': 'submit', 'session_id': bridge.selected, 'request_id': 'local-send', 'text': 'Private unsent text'}
+    assert not (await bridge.dispatch(request))[0]
+    identity, frozen = next(iter(bridge.messages.submissions().items()))
+    assert frozen['quote'] == quote and frozen['execution'] == 'unverified'
+    snapshot = {'protocolVersion': 1, 'hostInstanceId': 'fixture', 'revision': 1,
+                'session': {**bridge.session, 'messages': [*bridge.session['messages'],
+                    {'id': 'input:'+identity, 'inputId': identity, 'role': 'user', 'text': frozen['args']['text'], 'delivery': {'status': 'accepted'}}]}}
+    bridge.reconcile(snapshot)
+    assert not bridge.store.data['outbox'] and frozen['admission'] == 'accepted'
+    bridge.store.draft(bridge.selected, 'Newer private text')
+    bridge.messages.select_quote('display-1')
+    newer = bridge.messages.quote()
+    calls = deepcopy(transport.calls)
+    bridge.online = False
+    assert (await bridge.dispatch({'op': 'message.submissionInspect', 'session_id': bridge.selected, 'request_id': 'inspect', 'id': identity}))[0]
+    assert transport.calls == calls and bridge.store.data['drafts'][bridge.selected] == 'Newer private text'
+    assert bridge.messages.quote() == newer and frozen['quote'] == quote
+    bridge.store.close()
+    bridge.store = ClientState(tmp_path, 'ws://localhost/ahp', 'messages')
+    assert bridge.messages.submissions()[identity]['quote'] == quote
+    assert bridge.messages.submissions()[identity]['args']['text'] == 'Private unsent text'
+    bridge.store.close()

@@ -1,7 +1,9 @@
 """Installed consumer against the independent public distribution and native ACP."""
 import asyncio
+import base64
 import json
 import os
+import re
 import subprocess
 from pathlib import Path
 
@@ -67,9 +69,13 @@ async def open_bridge(url, root, workspace, identity, session=None):
 async def seeded(bridge):
     assert (await bridge.dispatch(request(bridge, 'submit', text='original fixture source')))[0]
     async with asyncio.timeout(90):
-        while not any(row.get('messageReference') and row['role'] == 'assistant' for row in bridge.session.get('messages', [])):
+        while bridge.session.get('activeTurnId') or not any(row['role'] == 'assistant' for row in bridge.session.get('messages', [])):
             await asyncio.sleep(.02)
     await wait_for(lambda: not bridge.messages.refreshing)
+    if not any(row.get('messageReference') and row['role'] == 'assistant' for row in bridge.session.get('messages', [])):
+        # Exercise the offered explicit selected-history refresh when the fresh
+        # fixture's canonical marker has not yet reached the initial snapshot.
+        await bridge.messages.refresh(bridge.selected)
     return next(row for row in bridge.session['messages'] if row.get('messageReference') and row['role'] == 'assistant')
 
 
@@ -236,3 +242,70 @@ async def test_actual_installed_terminal_quote_reload_reactions_missing_ref_and_
             evidence.mkdir(parents=True, exist_ok=True)
             (evidence / 'installed-message-terminal-last.txt').write_text(probe.text)
             await asyncio.to_thread(probe.close)
+
+
+async def test_stale_quoted_submission_retains_original_private_text_quote_id_and_newer_draft(message_host):
+    url, root, workspace = message_host
+    bridge, events = await open_bridge(url, root, workspace, 'stale-quote')
+    try:
+        source = await seeded(bridge)
+        scope = bridge.selected
+        await bridge.dispatch(request(bridge, 'draft', text='stale quoted private input'))
+        await bridge.dispatch(request(bridge, 'message.reply', message_id=source['id']))
+        bridge.store.data['quotes'][scope]['reference']['sourceDigest'] = '0' * 64
+        original_quote = bridge.messages.quote()
+        bridge.store.save()
+        await bridge.dispatch(request(bridge, 'submit', text='stale quoted private input'))
+        async with asyncio.timeout(30):
+            while not any('Selected message digest changed' in row['text'] for row in bridge.items()):
+                await asyncio.sleep(.02)
+        command, frozen = next(iter(bridge.messages.submissions().items()))
+        assert frozen['quote'] == original_quote and frozen['args']['text'] == 'stale quoted private input'
+        assert frozen['admission'] == 'accepted' and frozen['execution'] == 'unverified'
+        await bridge.close()
+        bridge, events = await open_bridge(url, root, workspace, 'stale-quote', scope)
+        assert bridge.messages.submissions()[command] == frozen
+        await bridge.dispatch(request(bridge, 'draft', text='Newer private input stays here'))
+        current = next(row for row in bridge.session['messages'] if (row.get('messageReference') or {}).get('messageId') == source['messageReference']['messageId'])
+        await bridge.dispatch(request(bridge, 'message.reply', message_id=current['id']))
+        newer_quote = bridge.messages.quote()
+        assert (await bridge.dispatch(request(bridge, 'message.submissionInspect', id=command)))[0]
+        inspected = next(row for row in reversed(events) if row['type'] == 'host_review')
+        original = json.loads(inspected['detail'])
+        assert original['commandId'] == command and original['original']['quote'] == original_quote
+        assert bridge.store.data['drafts'][scope] == 'Newer private input stays here'
+        assert bridge.messages.quote() == newer_quote
+        assert not any('stale quoted private input' in json.loads(line)['prompt'] for line in (root / 'provider-audit.jsonl').read_text().splitlines())
+        (root / 'expected-turns.json').write_text('2')
+        evidence = Path(os.environ.get('TUI_EVIDENCE_DIR', root))
+        evidence.mkdir(parents=True, exist_ok=True)
+        (evidence / 'stale-quote-preserved.json').write_text(json.dumps(original, indent=2))
+        executable = os.environ.get('TUI_CONNECTED_EXECUTABLE')
+        if executable:
+            await bridge.close()
+            args = [executable, '--server', url, '--workspace', str(workspace), '--state-dir', str(root / 'stale-quote'), '--client', 'stale-quote', '--session', scope]
+            probe = Probe(args, 120, 40, guard_terminal_modes=True, env={'PYTHONPATH': ''})
+            try:
+                await displayed([probe], lambda: 'Newer private input stays here' in probe.text)
+                probe.send(b'\x1bOS')
+                await displayed([probe], lambda: 'Actions' in probe.text)
+                probe.send(b'delivery\r')
+                await displayed([probe], lambda: 'Inspect original quoted submission' in probe.text)
+                probe.send(b'Inspect original quoted submission\r')
+                await displayed([probe], lambda: 'Host review' in probe.text and 'quoted-original' in probe.text)
+                assert 'stale' in probe.text and 'quoted private input' in probe.text
+                probe.send(b'\r')
+                await displayed([probe], lambda: re.search(rb'\x1b\]52;c;([^\x07]*)\x07', probe.raw))
+                copied = re.findall(rb'\x1b\]52;c;([^\x07]*)\x07', probe.raw)[-1]
+                assert json.loads(base64.b64decode(copied)) == original
+                (evidence / 'stale-quote-terminal.txt').write_text(probe.text)
+                (evidence / 'stale-quote-terminal.ansi').write_bytes(bytes(probe.raw))
+            finally:
+                (evidence / 'stale-quote-terminal-last.txt').write_text(probe.text)
+                await asyncio.to_thread(probe.close)
+            bridge, events = await open_bridge(url, root, workspace, 'stale-quote', scope)
+            assert bridge.store.data['drafts'][scope] == 'Newer private input stays here'
+            assert bridge.messages.quote() == newer_quote
+            assert bridge.messages.submissions()[command]['quote'] == original_quote
+    finally:
+        await bridge.close()
