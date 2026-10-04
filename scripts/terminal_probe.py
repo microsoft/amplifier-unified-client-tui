@@ -16,7 +16,9 @@ import signal
 import struct
 import subprocess
 import sys
+import tempfile
 import termios
+import threading
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -24,29 +26,39 @@ from pathlib import Path
 import pyte
 
 ROOT = Path(__file__).resolve().parents[1]
+_RECORD_LOCK = threading.Lock()
 
 
 def record(pid, status):
-    path = ROOT / ".state/WORKSPACE-MANIFEST.json"
-    path.parent.mkdir(parents=True, exist_ok=True)
-    data = json.loads(path.read_text()) if path.exists() else {"version": 1, "resources": []}
-    now = datetime.now(timezone.utc).isoformat()
-    identity = f"probe-pty-{pid}"
-    entry = next((e for e in data["resources"] if e["id"] == identity), None)
-    if entry is None:
-        entry = {
-            "kind": "pty",
-            "id": identity,
-            "pid": pid,
-            "created_at": now,
-            "note": "Isolated PTY probe process group",
-            "teardown": f"kill -TERM -- -{pid}",
-        }
-        data["resources"].append(entry)
-    entry["status"] = status
-    if status == "reaped":
-        entry["reaped_at"] = now
-    path.write_text(json.dumps(data, indent=2) + "\n")
+    with _RECORD_LOCK:
+        path = ROOT / ".state/WORKSPACE-MANIFEST.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        data = json.loads(path.read_text()) if path.exists() else {"version": 1, "resources": []}
+        now = datetime.now(timezone.utc).isoformat()
+        identity = f"probe-pty-{pid}"
+        entry = next((e for e in data["resources"] if e["id"] == identity), None)
+        if entry is None:
+            entry = {
+                "kind": "pty",
+                "id": identity,
+                "pid": pid,
+                "created_at": now,
+                "note": "Isolated PTY probe process group",
+                "teardown": f"kill -TERM -- -{pid}",
+            }
+            data["resources"].append(entry)
+        entry["status"] = status
+        if status == "reaped":
+            entry["reaped_at"] = now
+        descriptor, temporary = tempfile.mkstemp(prefix=".probe-receipt-", dir=path.parent)
+        try:
+            with os.fdopen(descriptor, "w") as stream:
+                stream.write(json.dumps(data, indent=2) + "\n")
+                stream.flush()
+                os.fsync(stream.fileno())
+            os.replace(temporary, path)
+        finally:
+            Path(temporary).unlink(missing_ok=True)
 
 
 class Screen(pyte.Screen):
@@ -189,6 +201,19 @@ class Probe:
         self.last_input_ns = start
         os.write(self.master, data)
         return start
+
+    def wait_screen(self, predicate, *, after_bytes, timeout=15):
+        """Wait for fresh parsed output satisfying an explicit complete-screen condition.
+
+        This is presentation evidence only. Callers must bind new content and all
+        required geometry; it does not establish execution or a busy transition.
+        """
+        end = time.monotonic() + timeout
+        while time.monotonic() < end:
+            self.read()
+            if self.bytes > after_bytes and predicate(self):
+                return time.monotonic_ns()
+        raise AssertionError(f"Terminal did not reach the complete screen condition\n{self.text}")
 
     def wait_idle(self, timeout=15):
         """Observe current footer, never a completed message in old scrollback.

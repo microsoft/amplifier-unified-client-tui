@@ -123,13 +123,25 @@ async def test_unknown_delivery_is_read_only_on_retry_and_never_replayed(ahp_hos
     url, root, log = ahp_host
     a, _ = await view(root / 'a', url)
     try:
-        await a.dispatch(request(a, 'submit', text='first'))
+        original = request(a, 'submit', text='first')
+        assert (await a.dispatch(original))[0]
         await wait_for(lambda: not a.store.data['outbox'])
+        # Admission can precede provider execution; bind the baseline to the original intent.
+        journal = [json.loads(line) for line in a.store.path.with_suffix('.intent.jsonl')
+                   .read_text().splitlines()]
+        commands = {row['commandId'] for row in journal
+                    if row.get('local_request') == original['request_id']}
+        assert len(commands) == 1
+        await wait_for(lambda: log.exists() and log.read_text().endswith('\n'))
+        before = log.read_text()
+        prompts = [json.loads(line) for line in before.splitlines()]
+        assert len(prompts) == 1
+        assert prompts[0]['_meta']['amplifier.dev/command']['commandId'] == commands.pop()
+        assert prompts[0]['prompt'] == [{'type': 'text', 'text': 'first'}]
         identity = str(uuid.uuid4())
         a.store.data['outbox'][identity] = {'session': a.selected, 'action': 'conversation.send',
             'args': {'text': 'DO NOT RESEND'}, 'status': 'unknown'}
         a.store.save()
-        before = log.read_text()
         result = await a.dispatch(request(a, 'retry_delivery', id=identity))
         assert result[0] is False
         assert log.read_text() == before

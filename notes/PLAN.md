@@ -41,3 +41,25 @@ RELEASE-01 review repair: refuse nonregular/symlink input through no-follow,
 nonblocking descriptors before reading. Bound JSON at MAX_BYTES+1, stream wheel
 hash/copy within declared bytes, and reject descriptor/path identity or content
 changes. Preserve f6 evidence; requalify a separate successor before adoption.
+
+Unknown-delivery fixture synchronization (continuity.v1:2, continuity.v1:4):
+host admission does not prove the original provider prompt has started. Before
+injecting an unknown receipt, wait within the existing ten-second bound for a
+complete original audit record and validate its exact command identity and text
+against the private intent journal. Missing, malformed or wrong records fail;
+retain read-only retry, unchanged provider audit and unknown-status assertions.
+This changes test ordering only; earlier qualified source identities remain intact.
+
+PTY observer receipt repair (continuity.v1:2): concurrent probe cleanup must retain
+every resource identity/status in its shared test receipt. Serialize thread updates
+and atomically replace the receipt in its own directory so readers see complete
+JSON. Malformed existing receipts must still fail without replacement. Qualify a
+new exact source; retain the earlier passing source and failed cleanup receipts.
+
+Simulated renderer observer repair (presentation.v1:3, continuity.v1:2): a
+fixed settling delay cannot prove complete geometry, and a coalesced PTY read
+may omit an intermediate busy projection. Bound the geometry wait by its exact
+composer rows/text. Bind explicit Tab submission to its new user/response text,
+complete composer/actions and Ready footer observed after input. Keep general
+wait_idle transition requirements and all geometry/teardown assertions unchanged.
+Controlled fragmented/coalesced mechanisms are separate from actual Mac evidence.

@@ -63,6 +63,13 @@ def draft_is(probe, expected):
     raise AssertionError(f"Composer did not reach {expected!r}:\n{probe.text}")
 
 
+def complete_response_screen(probe, *, submitted, response):
+    rows = probe.screen.display
+    return (submitted in probe.text and response in probe.text and rows[-1].strip() == 'Ready'
+            and any(row.strip().startswith('Message ·') for row in rows)
+            and any('[ Actions ]' in row for row in rows))
+
+
 def test_markdown_visual_line_scroll_anchor_stream_and_resize(tmp_path):
     source = (
         "# Markdown reading\n\n**Bold** and `inline` [docs](https://example.test)\n\n- list item\n\n```text\n"
@@ -137,9 +144,12 @@ def test_boundary_history_and_tab_completion_keep_neighbors(tmp_path):
         probe.send(b"\x1b[B\t")
         draft_is(probe, "Use @context-beta suffix")
         assert "Working" not in probe.text
+        before = probe.bytes
         probe.send(b"\t\r")  # complete exact token, then explicit submit
-        probe.wait_idle()
+        probe.wait_screen(lambda p: complete_response_screen(p,
+            submitted='Use @context-beta suffix',
+            response='Streaming new content without disturbing the reading anchor.'),
+            after_bytes=before)
     finally:
         probe.close()
-
 

@@ -26,6 +26,18 @@ def composer_rows(probe):
     return top, bottom
 
 
+def complete_pasted_geometry(probe, cols):
+    try:
+        top, bottom = composer_rows(probe)
+    except StopIteration:
+        return False
+    lines = probe.screen.display[top + 2 : bottom]
+    return (len(lines) == 3 and lines[0] == 'x' * cols
+            and lines[1].rstrip() == 'NEXT' and lines[2].rstrip() == 'third'
+            and not probe.screen.display[top + 1].strip()
+            and probe.screen.display[top].startswith('Message ·'))
+
+
 def settle(probe, seconds=0.15):
     until = time.monotonic() + seconds
     while time.monotonic() < until:
@@ -88,8 +100,9 @@ for line in sys.stdin:
     )
     try:
         probe.wait("Geometry proof" if cols >= 80 else "Message ·")
+        before = probe.bytes
         probe.send(b"\x1b[200~" + b"x" * cols + b"NEXT\nthird" + b"\x1b[201~")
-        settle(probe)
+        probe.wait_screen(lambda p: complete_pasted_geometry(p, cols), after_bytes=before)
         top, bottom = composer_rows(probe)
         lines = probe.screen.display[top + 2 : bottom]
         assert not probe.screen.display[top + 1].strip()
@@ -100,9 +113,10 @@ for line in sys.stdin:
         assert "Ratatui" not in probe.text and "LIVE RUNTIME" not in probe.text
         assert not any(c in "\n".join(lines) for c in "│╭╮╰╯")
         capture(probe, f"edge-to-edge-input-{cols}")
+        before = probe.bytes
         probe.send(b"\x1bOR")  # System inspection retains the full-width composer.
         probe.wait("Message · draft stays editable")
-        settle(probe)
+        probe.wait_screen(lambda p: complete_pasted_geometry(p, cols), after_bytes=before)
         top, bottom = composer_rows(probe)
         assert probe.screen.display[top].startswith("Message ·")
         assert not probe.screen.display[top + 1].strip()
