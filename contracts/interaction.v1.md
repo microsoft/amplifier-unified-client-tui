@@ -28,7 +28,7 @@ This describes the destination, not a claim that every interaction is implemente
    Broken: Enter both chooses an action and submits text, or arriving activity steals a keystroke intended for the composer.
    Affected: people writing corrections while tools and decisions arrive.
 
-3. **Preserve rich input intent.** Up/Down recall history only at editor line boundaries and restore the draft on return; supported references retain meaning, and text recall never invents missing attachments.
+3. **Preserve rich input intent.** Up/Down recall history only at editor line boundaries and restore the draft on return; supported references retain meaning, and text recall never invents missing attachments. Quote selection and clearing are private, draft-preserving actions on a loaded canonical message. Only explicit Send carries the original bounded locator; missing or stale references refuse without replacing the draft. Account-bound reactions set an explicit offered emoji state through negotiated host actions, independently of sending a turn.
    Recall includes same-directory submissions without importing model context. Explicit snapshots disclose path, selected line range and digest before attachment or insertion; reference text retains source identity through queue/resume, while images require compatible providers. Captured bytes never become a path reread or silent conversion. External editing returns to an unsent draft and preserves it on failure.
    Broken: A draft submits corrupted references or missing queued attachments; timestamps recall out of order, legacy ordering is undisclosed, or clipboard acquisition implicitly submits.
    Affected: people assembling and recalling instructions; durable retention belongs to continuity.v1.

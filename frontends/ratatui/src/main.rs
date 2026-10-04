@@ -138,6 +138,10 @@ struct Item {
     status: String,
     #[serde(default)]
     detail: String,
+    #[serde(default)]
+    reference: Value,
+    #[serde(default, rename = "historicalOnly")]
+    historical_only: bool,
 }
 
 struct App {
@@ -444,6 +448,26 @@ impl App {
                 }).collect();
                 self.menu(format!("Choose {}", string(&v, "title")), choices);
                 self.ui.menu.as_mut().unwrap().detail = "Only this conversation setting changes. Escape keeps the current setting and draft.".into();
+            }
+            "message_controls" => {
+                self.ui.quote_available = v["quote_available"] == true;
+                self.ui.reactions_available = v["reactions_available"] == true;
+                self.ui.quote = v["quote"].clone();
+                if !string(&v, "error").is_empty() { self.status = string(&v, "error"); }
+            }
+            "message_reactions" => {
+                let id = string(&v, "message_id");
+                let mut choices = Vec::new();
+                if v["pending"]["id"].is_string() {
+                    choices.push(interaction::choice("Inspect original reaction receipt — no repeat", Action::MessageReceipt(string(&v["pending"], "id"))));
+                } else {
+                    for emoji in v["emoji"].as_array().unwrap_or(&vec![]) {
+                        let mine = v["mine"].as_array().is_some_and(|values| values.contains(emoji));
+                        let label = format!("{} {} · {}", if mine {"Remove"} else {"Add"}, emoji.as_str().unwrap_or(""), v["counts"][emoji.as_str().unwrap_or("")].as_u64().unwrap_or(0));
+                        choices.push(interaction::choice(label, Action::MessageReaction(id.clone(), emoji.as_str().unwrap_or("").into(), !mine)));
+                    }
+                }
+                self.menu("Shared reactions · authenticated account", choices);
             }
             "host_effects" => {
                 let choices = v["entries"].as_array().unwrap_or(&vec![]).iter().map(|row| {
@@ -1252,10 +1276,14 @@ impl App {
                         Some("work") => Action::View(0), Some("review") => Action::View(1),
                         Some("system") => Action::View(2), Some("deliveries") => Action::Deliveries,
                         Some("history") => Action::HistoryPage(0), Some("conversations") => Action::Conversations,
-                        Some("decisions") => Action::Decisions,
+                        Some("decisions") => Action::Decisions, Some("messages") => Action::Messages,
                         _ => return json!({"accepted":false,"error":"Panel is unavailable"}),
                     };
                     self.activate(action);
+                }
+                "message.reply" | "message.replyClear" | "message.read" | "message.reaction" | "message.receipt" | "message.refresh" => {
+                    // Authorize against the live renderer revision; the backend
+                    // applies the same selected-session action as human controls.
                 }
                 _ => return json!({"accepted":false,"error":"Client operation is unavailable"}),
             }
@@ -1263,8 +1291,12 @@ impl App {
         }
         let mut result = json!({"accepted":true,"session":self.nav.session,"revision":self.client_revision,
             "view":self.view,"busy":self.flow.busy,"switchPending":self.nav.switching.is_some(),
-            "actions":["draft.replace","view.select","panel.open"]});
-        if request["includeDraft"] == true {result["draft"] = json!(self.draft.lines().join("\n"));}
+            "actions":["draft.replace","view.select","panel.open","message.reply","message.replyClear","message.read","message.reaction","message.receipt","message.refresh"]});
+        result["messages"] = json!(self.items.iter().filter(|item| matches!(item.kind.as_str(), "user" | "assistant"))
+            .rev().take(50).map(|item| json!({"id":item.id,"role":item.kind,"preview":item.text.chars().take(400).collect::<String>(),
+                "quotable":self.ui.quote_available && !item.reference.is_null() && !item.historical_only,
+                "reactionsAvailable":self.ui.reactions_available && !item.reference.is_null() && !item.historical_only})).collect::<Vec<_>>());
+        if request["includeDraft"] == true {result["draft"] = json!(self.draft.lines().join("\n"));result["quote"] = self.ui.quote.clone();}
         result
     }
 

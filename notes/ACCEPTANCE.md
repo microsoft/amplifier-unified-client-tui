@@ -21,3 +21,16 @@ No production service, Spark state, paid model, provider account, physical termi
 external clipboard or other-platform release was used to establish these results.
 Use scripts/qualify_current.py to repeat full source/build/install/PTY qualification
 against an independently built host artifact. No publication is implied.
+
+The message interaction candidate passed the canonical source/build/wheel gate with
+122 Python tests, 7 explicitly gated skips, 79 Rust tests and five installed
+standard-host terminal PTYs. A separately installed message-capable distribution and
+native ACP fixture passed canonical quote Send and lost reaction acknowledgement
+recovery using an exact original receipt, without replacing later observed counts.
+The installed Python interpreter and actual installed terminal executable also passed
+private quote/draft reload, missing reference refusal and exact busy Stop admission.
+Exact protocol frames establish no extra prompt and no reaction replay or caller actor
+injection. The observer drains the PTY while awaiting receipts; native standard Stop
+requests graceful cancellation rather than force-terminating a blocked provider.
+See [class inventory and limits](MESSAGE-PARITY.md). Automatic reaction metadata watch
+remains unmapped; counts update through explicit Inspect and confirmed actions.

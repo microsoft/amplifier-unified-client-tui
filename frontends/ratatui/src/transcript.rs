@@ -667,6 +667,7 @@ mod tests {
                 text: text.into(),
                 status: "succeeded".into(),
                 detail: detail.to_string(),
+                ..Default::default()
             });
         }
         for width in [175, 40, 1, 0] {

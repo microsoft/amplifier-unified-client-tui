@@ -68,6 +68,17 @@ loaded observations until detach; this is not a native-context limit. Supported
 text, thinking, tools, errors, reported usage and resource references retain identity
 and ordering. Large tool details stay inspectable as structured source.
 
+`/messages` (Actions → Messages) lists the loaded saved messages. Reply selects a
+private quote and Clear reply removes it; both preserve the draft and survive reload.
+Only explicit Send submits the quote's canonical locator. Refresh saved messages is
+an explicit bounded history read when a reference is absent. Streaming fragments and
+archived context cannot be quoted. Frozen quoted source appears with the saved reply.
+Inspect shared reactions reads the selected message. Add/Remove sets an offered emoji
+for the authenticated host account; it never sends a prompt. A lost acknowledgement
+blocks another change to that message until its original receipt is inspected. Current
+counts cannot prove an unknown request, and receipt inspection never repeats it.
+Counts represent the last explicit read or confirmed action; reopen Inspect to refresh.
+
 Permission choices preserve the options supplied by the agent. Stop uses standard
 cancel; it does not promise force termination or undo. Rename changes the shared
 session title. Unsupported queue, steer, takeover, history editing and device actions

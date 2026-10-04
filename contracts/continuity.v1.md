@@ -35,6 +35,7 @@ Receipts live in [acceptance notes](../notes/ACCEPTANCE.md).
    Affected: client authors and people recovering from disconnects.
 
 4. **Keep decisions attributable.** Permission and client-effect receipts retain the source session, turn, tool and command identity. Durable unknown status is written before a device/UI effect; missing replies remain inspectable without automatic retry.
+   Private quotes retain their original session and canonical locator across restart. Reaction evidence binds the original command, native message, authenticated host scope and desired state; current counts never prove an unknown request. Inspecting an exact original receipt never repeats the reaction or overwrites a newer observed revision.
    Broken: A stale decision applies to a newer request or uncertainty is treated as denial of any effect.
    Affected: people reviewing approvals and agent-directed local actions.
 

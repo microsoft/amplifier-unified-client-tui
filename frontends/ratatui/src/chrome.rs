@@ -485,6 +485,11 @@ impl Chrome {
     }
 
     pub fn draw(&self, f: &mut Frame, app: &mut App, area: Rect) {
+        let heading = if app.ui.quote.is_object() {
+            format!("Replying to {} · {}", if app.ui.quote["role"] == "user" {"You"} else {"Amplifier"}, safe(&string(&app.ui.quote, "excerpt").chars().take(80).collect::<String>()).replace('\n', " ↵ "))
+        } else {
+            format!("Message · Mode: {}{}{}", app.policy, runtime_notice(&app.mode), app.controls.goal)
+        };
         let composer = Rect::new(area.x, area.y + 1, area.width, self.edit_rows + 2);
         f.render_widget(
             Block::default().style(Style::default().bg(palette().panel)),
@@ -493,12 +498,7 @@ impl Chrome {
         text(
             f,
             Rect::new(area.x, area.y, area.width, 1),
-            format!(
-                "Message · Mode: {}{}{}",
-                app.policy,
-                runtime_notice(&app.mode),
-                app.controls.goal
-            ),
+            heading.clone(),
             if app.ui.focus.is_none() {
                 palette().green
             } else {
@@ -506,13 +506,7 @@ impl Chrome {
             },
         );
         let title = title_preview(&app.title, area.width);
-        let heading_width = format!(
-            "Message · Mode: {}{}{}",
-            app.policy,
-            runtime_notice(&app.mode),
-            app.controls.goal
-        )
-        .width();
+        let heading_width = heading.width();
         if area.width >= 74 && heading_width + title.width() + 2 <= area.width as usize {
             text(
                 f,
