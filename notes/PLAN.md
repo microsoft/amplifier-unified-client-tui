@@ -86,3 +86,5 @@ session, within the existing displayed timeout and live-process check. Retain
 exact text, confirmed/refused settings, two changes and zero prompts assertions.
 The supplemental observer commit is separate from the unchanged sealed wheel's
 731 source; historical 4-pass/1-failure evidence and final teardown state remain.
+
+The persistence observer controls run with the exact verified managed Python after Root extraction. Linux runner bootstrap Python 3.10 lacks asyncio.timeout; this interpreter placement correction leaves observer assertions and product bytes unchanged.

@@ -138,6 +138,8 @@ def main():
                                                'import platform; print(platform.machine())'], text=True).strip()
             if actual != 'x86_64':
                 raise ValueError('Managed Python target mismatch')
+    run('persistence-observer-controls', [str(executables['python']),
+        str(ROOT / '.github/scripts/test_saved_draft_observer.py')], logs, environment, ROOT)
     environment['PATH'] = str(executables['node'].parent) + os.pathsep + environment['PATH']
     environment.update(AMPLIFIER_TUI_NODE=str(executables['node']), TUI_TEST_CANDIDATES='1')
     run('independent-host', [sys.executable, 'scripts/prepare_qualification_host.py',
