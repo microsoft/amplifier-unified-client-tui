@@ -1,0 +1,18 @@
+{
+  "format": "amplifier-unified-client-tui.temporary-host-input",
+  "schemaVersion": 1,
+  "filename": "host-54e539.tgz",
+  "bytes": 244199,
+  "sha256": "54e53991d0acbdd3e0547379de7c41f04e65b0ff70653cd92b2d03b2d13ccb0f",
+  "package": {
+    "name": "@amplifier/unified-host",
+    "version": "0.1.0"
+  },
+  "source": {
+    "repository": "https://github.com/microsoft/amplifier-unified-host",
+    "producerCommit": "f15dc8859732464b560bff7c0202c34cc9e9688e",
+    "reviewedMainCommit": "c3fa000d42c55b13eb87b9e86cd3d5db6897e4e1",
+    "tree": "e124c4103f2a262ea986d013e403a6fc6660842a"
+  },
+  "purpose": "Temporary private qualification input only; never shipped or published; not a standing host revision"
+}
