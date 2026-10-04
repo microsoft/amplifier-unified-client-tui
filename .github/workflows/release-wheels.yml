@@ -92,6 +92,7 @@ jobs:
           name: amplifier-unified-client-tui-${{ inputs.target }}
           path: .state/tui-source/.release-assets/*
           if-no-files-found: error
+          include-hidden-files: true
           retention-days: 14
       - name: Retain private failure evidence without host archive or environments
         if: failure()
