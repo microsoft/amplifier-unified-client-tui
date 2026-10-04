@@ -1,0 +1,72 @@
+{
+  "linux-x86_64": {
+    "sourceCommit": "7311d4087f143f890340967e5a2fd5f0b0b0d5b7",
+    "wheelRun": 37195495064,
+    "manifestSha256": "444ebfbf1df11860882c385fa26ffdd7d0daa513a79af6a9ab2ce5055039928e",
+    "wheelSha256": "a40c30e03b7f8aaa3b95e250d3fd21e68c4c8fa6cbc5c6a119e94bd109a68244",
+    "filename": "amplifier_unified_client_tui-0.5.0rc2-py3-none-linux_x86_64.whl",
+    "runtimes": {
+      "python": {
+        "version": "3.13.16",
+        "url": "https://github.com/astral-sh/python-build-standalone/releases/download/20261003/cpython-3.13.16%2B20261003-x86_64-unknown-linux-gnu-install_only_stripped.tar.gz",
+        "bytes": 35076205,
+        "sha256": "4595c5589fff7bf0cb158d9a88a797e0d791fa33830770fcb7bf3f4b104feeae",
+        "archive": "tar.gz",
+        "archiveRoot": "python",
+        "executable": "bin/python3.13",
+        "target": {
+          "os": "linux",
+          "arch": "x86_64"
+        }
+      },
+      "node": {
+        "version": "22.23.3",
+        "url": "https://nodejs.org/dist/v22.23.3/node-v22.23.3-linux-x64.tar.gz",
+        "bytes": 56792076,
+        "sha256": "1084aa36196bba4c3a5e69a1ee388a6e4ff729dad09445fbcd434b28fe3c24af",
+        "archive": "tar.gz",
+        "archiveRoot": "node-v22.23.3-linux-x64",
+        "executable": "bin/node",
+        "target": {
+          "os": "linux",
+          "arch": "x86_64"
+        }
+      }
+    }
+  },
+  "macos-x86_64": {
+    "sourceCommit": "7311d4087f143f890340967e5a2fd5f0b0b0d5b7",
+    "wheelRun": 37195854173,
+    "manifestSha256": "84962fcc277caee1e85f5da4312a92317f00625dcaaea7e04667e90bee204ad9",
+    "wheelSha256": "4c790019c16d315504f67793db39f9e6d3fe00fc155fcdee3e5ab88e9d69f07f",
+    "filename": "amplifier_unified_client_tui-0.5.0rc2-py3-none-macosx_10_12_x86_64.whl",
+    "runtimes": {
+      "python": {
+        "version": "3.13.15",
+        "url": "https://github.com/astral-sh/python-build-standalone/releases/download/20260929/cpython-3.13.15%2B20260929-x86_64-apple-darwin-install_only_stripped.tar.gz",
+        "bytes": 24949564,
+        "sha256": "73b503a2d3f47f0601265d7936744b77dc4ee75d2a3e88a470594a014dcf6822",
+        "archive": "tar.gz",
+        "archiveRoot": "python",
+        "executable": "bin/python3.13",
+        "target": {
+          "os": "macos",
+          "arch": "x86_64"
+        }
+      },
+      "node": {
+        "version": "22.23.2",
+        "url": "https://nodejs.org/dist/v22.23.2/node-v22.23.2-darwin-x64.tar.gz",
+        "bytes": 51246936,
+        "sha256": "58e99022c2ff89395576cc7fd4d98cea24bb68081475d5f88b801ee8729fb026",
+        "archive": "tar.gz",
+        "archiveRoot": "node-v22.23.2-darwin-x64",
+        "executable": "bin/node",
+        "target": {
+          "os": "macos",
+          "arch": "x86_64"
+        }
+      }
+    }
+  }
+}

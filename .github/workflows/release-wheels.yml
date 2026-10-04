@@ -2,16 +2,26 @@ name: Qualify current AHP terminal client
 on:
   workflow_dispatch:
     inputs:
+      managed_runtime_only:
+        description: Supplement an existing sealed Intel wheel without rebuilding or publishing
+        type: boolean
+        default: false
+      target:
+        description: Managed-runtime supplement platform (used only when managed_runtime_only is true)
+        type: choice
+        options: [linux-x86_64, macos-x86_64]
+        default: linux-x86_64
       host_tarball_url:
         description: HTTPS URL for independently built @amplifier/unified-host npm tarball
-        required: true
+        required: false
       host_tarball_sha256:
         description: Reviewed SHA256 of that host artifact
-        required: true
+        required: false
 permissions:
   contents: read
 jobs:
   wheel:
+    if: ${{ !inputs.managed_runtime_only }}
     strategy:
       fail-fast: false
       matrix:
@@ -84,3 +94,84 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 # No automatic tag, publication, deployment or credentialed provider call.
+
+  managed-runtime:
+    if: ${{ inputs.managed_runtime_only }}
+    permissions:
+      contents: read
+      actions: read
+    runs-on: ${{ inputs.target == 'linux-x86_64' && 'ubuntu-22.04' || 'macos-15-intel' }}
+    timeout-minutes: 20
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - name: Check out qualification workflow
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7
+        with:
+          version: "0.12.23"
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: "22"
+      - name: Select reviewed immutable inputs
+        id: inputs
+        env:
+          TARGET: ${{ inputs.target }}
+        run: |
+          python - <<'PY'
+          import json,os
+          from pathlib import Path
+          target=os.environ['TARGET']
+          value=json.loads(Path('.github/qualification-runtimes.json').read_text())[target]
+          with open(os.environ['GITHUB_OUTPUT'],'a') as output:
+              output.write('source='+value['sourceCommit']+'\n')
+              output.write('wheel-run='+str(value['wheelRun'])+'\n')
+          PY
+      - name: Check out exact qualified source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ steps.inputs.outputs.source }}
+          path: .state/tui-source
+          persist-credentials: false
+      - name: Check out reviewed same-repository independent host input
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: 7f67c33759ed1148483f64ebcf0b54054155ccbe
+          path: .state/inputs
+          sparse-checkout: |
+            .qualification-inputs
+            scripts
+          persist-credentials: false
+      - name: Download previously sealed exact wheel artifact
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: amplifier-unified-client-tui-${{ inputs.target }}
+          path: .state/sealed-wheel
+          run-id: ${{ steps.inputs.outputs.wheel-run }}
+          github-token: ${{ github.token }}
+      - name: Verify managed archives and run installed PTYs
+        env:
+          TARGET: ${{ inputs.target }}
+        run: python .github/scripts/qualify_managed_runtime.py --target "$TARGET"
+      - name: Upload portable runtime qualification only
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: managed-runtime-qualified-${{ inputs.target }}
+          path: .state/managed-runtime-export/*.json
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 14
+      - name: Retain private owned fixture and command logs
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: managed-runtime-private-${{ inputs.target }}
+          path: |
+            .state/managed-runtime/private-logs
+            .state/managed-runtime/installed-terminal.xml
+            .state/managed-runtime/profiles
+          if-no-files-found: warn
+          include-hidden-files: true
+          retention-days: 14

@@ -63,3 +63,28 @@ composer rows/text. Bind explicit Tab submission to its new user/response text,
 complete composer/actions and Ready footer observed after input. Keep general
 wait_idle transition requirements and all geometry/teardown assertions unchanged.
 Controlled fragmented/coalesced mechanisms are separate from actual Mac evidence.
+
+Managed runtime qualification (ecosystem.v1:6, composition.v1:1): preserve the
+qualified wheel/source evidence and supplement it with exact checksum-bound
+managed Python/Node archive identities, Node executable digests, and actual
+installed PTYs on the already-supported Intel Linux/macOS runners. Use reviewed
+same-repository host inputs and previously sealed wheel artifacts; no client
+behavior change, native rebuild, user credentials, publication, or feed binding.
+Keep managed-runtime acceptance distinct from earlier system/runner-cache
+qualification and from account, physical-device, older-OS, or live acceptance.
+
+The supplement uses the reviewed standalone Root install client's exported safe
+extraction API as a provenance-bound test peer. Bootstrap reads only the exact
+regular Node member from its verified archive. Root's bounded no-link-traversal
+policy then unpacks both archives; escaping links and special files still refuse.
+The earlier Python 3.10 tarfile refusal and earlier Mac success remain separate.
+
+Installed model-picker observer (continuity.v1:2): local composer visibility and
+a fixed 300 ms pause do not prove retained draft state after its 250 ms debounce
+and IPC. Await the complete local text and exact saved draft under its original
+session, within the existing displayed timeout and live-process check. Retain
+exact text, confirmed/refused settings, two changes and zero prompts assertions.
+The supplemental observer commit is separate from the unchanged sealed wheel's
+731 source; historical 4-pass/1-failure evidence and final teardown state remain.
+
+The persistence observer controls run with the exact verified managed Python after Root extraction. Linux runner bootstrap Python 3.10 lacks asyncio.timeout; this interpreter placement correction leaves observer assertions and product bytes unchanged.
