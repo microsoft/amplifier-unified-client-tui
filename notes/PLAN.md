@@ -22,3 +22,9 @@ Desired behavior is distinct from current [acceptance](ACCEPTANCE.md).
 | QUOTE-RECOVERY-01 | interaction.v1:3, continuity.v1:2, continuity.v1:4 | Original frozen quoted submission survives native refusal after host admission | Stale digest/native unknown execution retains exact private text/quote/command through reload, read-only inspection and newer draft/quote without any replay | Implemented; stale-digest native refusal, exact original reload and installed terminal inspection/copy passed; independent review required |
 
 | MESSAGE-WATCH-01 | continuity.v1:3, continuity.v1:4, ecosystem.v1:2 | Selected shared reaction updates via public resource watches | Other-client changes update current projection; stale scope/revision refuses, one coalesced read, detach/reconnect never repeat effects | Implemented; other-client live updates, reconnect and exact original uncertainty tested in installed public-host/native PTYs |
+
+Selection watch repair: retain at most one latest validated metadata packet for
+an in-flight selected scope and connection generation. Commit it only after the
+matching selection snapshot; discard on cancellation, replacement or reconnect.
+Serialize selections so a late snapshot cannot replace a newer view. This keeps
+public selected-resource projection and private unknown receipts independent.

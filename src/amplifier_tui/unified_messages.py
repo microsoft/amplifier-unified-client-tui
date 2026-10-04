@@ -53,6 +53,8 @@ class Messages:
         self.preview_key = None
         self.descriptors = {}
         self.record_revisions = {}
+        self.selection_pending = None
+        self.selection_record = None
 
     def quote_supported(self):
         descriptor = self.descriptors.get(self.bridge.selected)
@@ -245,15 +247,39 @@ class Messages:
             if self.bridge.selected == target:
                 self.bridge.send('system', lines=['Saved message references are unavailable. Open Messages and refresh saved messages; your draft is kept.'])
 
+    def begin_selection(self, scope):
+        token = object()
+        self.selection_pending = (token, scope, getattr(self.bridge.transport, 'generation', 0))
+        self.selection_record = None
+        return token
+
+    def finish_selection(self, token, *, committed=False):
+        pending = self.selection_pending
+        if not pending or pending[0] is not token:
+            return
+        packet = self.selection_record
+        self.selection_pending = self.selection_record = None
+        if (committed and packet and pending[1] == self.bridge.selected
+                and pending[2] == getattr(self.bridge.transport, 'generation', 0)):
+            self.accept(packet)
+
     def accept(self, packet):
         scope, record = packet.get('scope'), packet.get('record')
-        if scope != self.bridge.selected or not isinstance(record, dict):
+        pending = self.selection_pending
+        if (scope != self.bridge.selected and not (pending and pending[1] == scope)) or not isinstance(record, dict):
             return
         revision, data = record.get('revision'), record.get('data')
         key = (scope, getattr(self.bridge.transport, 'generation', 0))
         if (record.get('scope') != scope or record.get('topic') != 'message-metadata'
                 or type(revision) is not int or revision < 0 or not isinstance(data, dict)
                 or revision <= self.record_revisions.get(key, -1)):
+            return
+        if pending and pending[1] == scope:
+            if pending[2] != key[1]:
+                return
+            prior = self.selection_record
+            if prior is None or revision > prior['record']['revision']:
+                self.selection_record = deepcopy(packet)
             return
         self.record_revisions[key] = revision
         if len(self.record_revisions) > 32:

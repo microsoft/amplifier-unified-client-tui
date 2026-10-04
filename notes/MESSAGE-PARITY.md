@@ -47,3 +47,8 @@ standard `resourceWatch/changed`, and scoped capability `resourceRead`. The upst
 SDK owns resource-watch state/recovery. The native capability owner publishes only
 bounded changed-message metadata. The follow-on maps one selected watch, coalesces reads, validates original scope and
 monotonic revisions, and releases/re-establishes subscriptions without replay.
+
+Independent b55 installed review found initial watch metadata arriving before
+Python committed a returning selection. Preserve that red candidate; qualify a
+bounded selection handoff with return, competing selection and cancellation
+controls. No polling or unknown command replay is authorized by this repair.

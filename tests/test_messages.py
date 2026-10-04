@@ -267,3 +267,49 @@ def test_selected_watch_is_monotonic_and_never_settles_unknown_intent(tmp_path):
     shown = bridge.messages.decorate([{'id': 'source', 'reference': LOCATOR, 'kind': 'assistant', 'text': 'saved'}])
     assert not any('not confirmed' in row['text'] for row in shown)
     bridge.store.close()
+
+@pytest.mark.parametrize('control', ['commit', 'cancel', 'replaced', 'reconnect'])
+def test_initial_watch_waits_for_matching_selection_commit(tmp_path, control):
+    bridge, transport, events = setup(tmp_path)
+    target = 'ahp-session:/return'
+    token = bridge.messages.begin_selection(target)
+    def packet(revision, emoji):
+        return {'scope': target, 'record': {'topic': 'message-metadata', 'scope': target,
+            'revision': revision, 'data': {'changedMessage': {**transport.row(),
+                'revision': revision, 'reactions': [emoji], 'mine': [emoji], 'counts': {emoji: 1}}}}}
+    before = len(events)
+    bridge.messages.accept(packet(2, '👍'))
+    bridge.messages.accept(packet(3, '✅'))
+    bridge.messages.accept(packet(1, '🎉'))
+    assert len(events) == before and not bridge.messages.rows
+    if control == 'replaced':
+        bridge.messages.begin_selection('ahp-session:/newer')
+    if control == 'reconnect':
+        transport.generation = 1
+    bridge.selected = target
+    bridge.messages.finish_selection(token, committed=control != 'cancel')
+    if control == 'commit':
+        assert bridge.messages.rows[(target, LOCATOR['messageId'])]['mine'] == ['✅']
+    else:
+        assert not bridge.messages.rows and len(events) == before
+    assert not transport.calls
+    bridge.store.close()
+
+
+async def test_cancelled_selection_discards_initial_record_and_forces_new_handshake(tmp_path):
+    bridge, transport, _ = setup(tmp_path)
+    gate = asyncio.Event()
+    async def resolve(identity, **kwargs):
+        return identity
+    async def snapshot(identity):
+        await gate.wait()
+    transport.resolve_session, transport.snapshot = resolve, snapshot
+    task = asyncio.create_task(bridge.select('ahp-session:/cancelled'))
+    await asyncio.sleep(0)
+    assert bridge.messages.selection_pending
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    assert bridge.messages.selection_pending is None and transport.selected is None
+    assert bridge.selected == 'ahp-session:/a'
+    bridge.store.close()
