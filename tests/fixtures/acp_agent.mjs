@@ -1,6 +1,8 @@
 // Independent JSON-RPC ACP fixture: no host imports and no production models/accounts.
 import readline from 'node:readline';
 import { appendFileSync,readFileSync } from 'node:fs';
+const modelValues=Array.from({length:9},(_,i)=>({value:i===0?'openai/gpt-6-sol':i===1?'openai/gpt-6-astra':`fixture/model-${i}`,name:i===0?'OpenAI / gpt-6-sol':i===1?'OpenAI / gpt-6-astra':`Fixture model ${i}`}));
+const modelOption=value=>({id:'model',name:'Model',type:'select',currentValue:value??modelValues[0].value,options:modelValues});
 const sessions=new Map();let active;let permissionId=1000;const pending=new Map();
 const send=m=>process.stdout.write(JSON.stringify({jsonrpc:'2.0',...m})+'\n');
 const update=(sessionId,update)=>send({method:'session/update',params:{sessionId,update}});
@@ -13,8 +15,13 @@ for await(const line of readline.createInterface({input:process.stdin})) {
     const groups=JSON.parse(readFileSync(process.env.FIXTURE_HISTORY,'utf8'));const end=p.cursor?Number(p.cursor):groups.length,start=Math.max(0,end-p.limit);
     reply(message.id,{turnGroups:groups.slice(start,end),revision:'fixture-revision',diagnostics:[],nextCursor:start?String(start):null});
   }
-  else if(message.method==='session/new'){const sessionId='native-'+Math.random().toString(36).slice(2);sessions.set(sessionId,{});reply(message.id,{sessionId,configOptions:[{id:'mode',name:'Mode',type:'select',currentValue:'safe',options:[{value:'safe',name:'Safe'},{value:'fast',name:'Fast'}]}]});}
+  else if(message.method==='session/new'){const sessionId='native-'+Math.random().toString(36).slice(2);sessions.set(sessionId,{model:modelValues[0].value});reply(message.id,{sessionId,configOptions:[...(process.env.FIXTURE_MODELS?[modelOption()]:[]),{id:'mode',name:'Mode',type:'select',currentValue:'safe',options:[{value:'safe',name:'Safe'},{value:'fast',name:'Fast'}]}]});}
   else if(message.method==='session/resume'||message.method==='session/load'){sessions.set(p.sessionId,{});reply(message.id,{configOptions:[]});}
+  else if(message.method==='session/set_config_option'&&process.env.FIXTURE_MODELS&&p.configId==='model'){
+    if(process.env.FIXTURE_CONFIG_LOG)appendFileSync(process.env.FIXTURE_CONFIG_LOG,JSON.stringify(p)+'\n');
+    if(p.value==='fixture/model-2'){send({id:message.id,error:{code:-32011,message:'Fixture refuses this model'}});continue;}
+    sessions.get(p.sessionId).model=p.value;reply(message.id,{configOptions:[modelOption(p.value)]});
+  }
   else if(message.method==='session/set_config_option')reply(message.id,{configOptions:[{id:'mode',name:'Mode',type:'select',currentValue:p.value,options:[{value:'safe',name:'Safe'},{value:'fast',name:'Fast'}]}]});
   else if(message.method==='session/close')reply(message.id,{});
   else if(message.method==='session/prompt'){

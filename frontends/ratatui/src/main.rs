@@ -429,9 +429,27 @@ impl App {
                 self.menu("Existing workspaces · selection stays private", choices);
                 self.ui.menu.as_mut().unwrap().detail = "Choosing opens an unsent composer in that host workspace. It does not create, register, delete or start work. Escape keeps the current view and draft.".into();
             }
+            "settings" => {
+                let choices = v["properties"].as_array().unwrap_or(&vec![]).iter().map(|row| {
+                    interaction::choice(format!("{} · {}", string(row, "label"), row["current"].as_str().unwrap_or("Not reported")), Action::SettingOptions(string(row, "id")))
+                }).collect();
+                self.menu("Model and conversation settings", choices);
+                self.ui.menu.as_mut().unwrap().detail = if !string(&v, "notice").is_empty() { string(&v, "notice") } else if v["uncertain"] == true { "An earlier change is not confirmed. Inspect Original receipts before changing settings again. Your draft stays private.".into() } else { "Choose an offered setting. Your draft stays private; no message is sent.".into() };
+                if v["uncertain"] == true { self.ui.menu.as_mut().unwrap().choices.insert(0, interaction::choice("Inspect original setting receipts", Action::HostEffects)); }
+            }
+            "setting_choices" => {
+                let property = string(&v, "property");
+                let choices = v["choices"].as_array().unwrap_or(&vec![]).iter().map(|row| {
+                    interaction::choice(format!("{}{}", string(row, "label"), if row["value"] == v["current"] { " · current" } else { "" }), Action::SettingSet(property.clone(), row["value"].clone()))
+                }).collect();
+                self.menu(format!("Choose {}", string(&v, "title")), choices);
+                self.ui.menu.as_mut().unwrap().detail = "Only this conversation setting changes. Escape keeps the current setting and draft.".into();
+            }
             "host_effects" => {
                 let choices = v["entries"].as_array().unwrap_or(&vec![]).iter().map(|row| {
-                    interaction::choice(format!("{} · {} · {}", string(row, "operation"), string(row, "status"), string(row, "id")), Action::HostReceipt(string(row, "id")))
+                    let operation = match row["operation"].as_str().unwrap_or("") { "session.configure" => "Conversation setting", "fork" => "Recovery copy", "managedFiles.dispose" => "Owned file cleanup", _ => "Saved change" };
+                    let status = match row["status"].as_str().unwrap_or("") { "confirmed" => "Confirmed", "refused" => "Declined", "unknown" => "Not confirmed", _ => "Result recorded" };
+                    interaction::choice(format!("{} · {}", operation, status), Action::HostReceipt(string(row, "id")))
                 }).collect();
                 self.menu("Original host effect receipts · read only", choices);
             }
