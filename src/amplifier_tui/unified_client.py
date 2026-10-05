@@ -99,7 +99,7 @@ class UnifiedBridge:
             if operation.startswith('message.') or operation.startswith('queue') or operation.startswith('steer'):
                 if session != self.selected:
                     raise ValueError('Client selection changed; no message control applied')
-                allowed = {'message_id', 'emoji', 'present'} if operation.startswith('message.') else {'id', 'text'}
+                allowed = {'message_id', 'emoji', 'present', 'id'} if operation.startswith('message.') else {'id', 'text'}
                 payload = args.get('args', {})
                 if not isinstance(payload, dict) or not set(payload) <= allowed:
                     raise ValueError('Exact selected message arguments required')
@@ -740,6 +740,8 @@ class UnifiedBridge:
                     row['creation'] = {'workspace': self.workspace, **self.creation_args}
                 self.store.data['outbox'][identity] = row
             if op == 'retry_delivery':
+                if row['action'].startswith(('conversation.queue.', 'conversation.steer.')) and row['args'].get('id') != identity:
+                    return False, 'Original pending change remains unconfirmed; no separate mutation receipt was sent. Current shared state is not proof; original intent kept, nothing resubmitted.'
                 await self.refresh_delivery(row)
                 if row['session']:
                     try:

@@ -380,3 +380,41 @@ def test_pending_selection_rebinds_only_current_generation_latest_packet(tmp_pat
         assert not bridge.messages.rows and len(events) == before
     assert not transport.calls
     bridge.store.close()
+
+
+@pytest.mark.parametrize('operation', ['message.receipt', 'message.submissionInspect'])
+@pytest.mark.parametrize('authorized', [True, False])
+async def test_agent_original_message_inspection_keeps_id_and_shared_action(tmp_path, operation, authorized):
+    import json
+    bridge, transport, events = setup(tmp_path)
+    bridge.messages.select_quote('display-1')
+    quote = deepcopy(bridge.messages.quote())
+    if operation == 'message.receipt':
+        assert (await bridge.messages.react('display-1', '👍', True))[0]
+        identity = next(iter(bridge.messages.effects()))
+    else:
+        identity = 'original-quoted-submission'
+        bridge.messages.retain_submission(identity, {'session': bridge.selected,
+            'action': 'conversation.send', 'args': {'text': 'Frozen original', 'reply': quote['reference'], 'replyId': quote['id']}, 'quote': quote})
+    calls = deepcopy(transport.calls)
+    task = asyncio.create_task(bridge.client_tool({'session': bridge.selected, 'tool': {
+        'toolCallId': 'agent-original-inspection', 'toolName': 'amplifier_tui_action_fixture',
+        'toolInput': json.dumps({'action': operation, 'expectedRevision': 7, 'args': {'id': identity}})}}))
+    await asyncio.sleep(0)
+    guard = next(event for event in reversed(events) if event['type'] == 'client_ui')
+    assert guard['expectedRevision'] == 7 and guard['operation'] == operation
+    assert guard['args'] == {'id': identity}
+    bridge.ui_requests[guard['token']].set_result({'accepted': authorized, 'error': 'Client changed'})
+    result = await task
+    assert result['success'] is authorized
+    if authorized and operation == 'message.receipt':
+        assert transport.calls[len(calls):] == [('message.receipt', {'commandId': identity}, bridge.selected, None)]
+    else:
+        assert transport.calls == calls
+    assert bridge.messages.quote() == quote
+    assert bridge.store.data['drafts'][bridge.selected] == 'Private unsent text'
+    if authorized:
+        assert (await bridge.client_tool({'session': bridge.selected, 'tool': {
+            'toolCallId': 'agent-original-inspection', 'toolName': 'amplifier_tui_action_fixture',
+            'toolInput': json.dumps({'action': operation, 'expectedRevision': 7, 'args': {'id': identity}})}})) == result
+    bridge.store.close()

@@ -90,7 +90,7 @@ cancel; it does not promise force termination or undo. Rename changes the shared
 session title. `/queue` and `/pending` use an advertised shared host queue: explicit
 Queue admits text, saved edits and per-entry Resume rearm the offered identity, and
 Remove refuses already consumed input. Natural completion advances unheld work;
-cancellation, failure and host restart hold it. Opening this client never rearms work.
+cancellation, failure and host restart hold it. Queuing while idle may start work immediately. Opening this client never rearms work.
 `/steer` requires advertised Host and selected-agent support. It opens private text
 for explicit submission to this chat's active or next turn. Host acknowledgement and
 pending removal do not prove insertion. Corrections preserve original IDs and

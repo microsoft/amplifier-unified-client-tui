@@ -274,3 +274,58 @@ async def test_steering_receipt_requires_original_id_chat_and_typed_outcome(pend
         assert row['args']['id'] == identity
     finally:
         await a.close()
+
+
+@pytest.mark.parametrize('operation', ['queue_edit', 'queue_remove'])
+async def test_actual_lost_mutation_echo_never_queries_unsent_uuid_or_snapshot_proof(pending_host, operation, monkeypatch):
+    a, _, log = await seeded(pending_host)
+    b = proxy = None
+    try:
+        await a.dispatch(request(a, 'submit', text='busy'))
+        await wait_for(lambda: a.session['status'] == 'working')
+        await a.dispatch(request(a, 'queue', text='original held input'))
+        pending_id = a.session['queuedMessages'][0]['id']
+        await a.dispatch(request(a, 'stop'))
+        await wait_for(lambda: a.session['status'] == 'ready')
+        fault = pending_host[1] / 'fault'
+        fault.mkdir()
+        proxy = await asyncio.create_subprocess_exec('node', str(ROOT / 'tests/fixtures/pending_fault_proxy.mjs'),
+            pending_host[0], str(fault), stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+        async with asyncio.timeout(10):
+            line = await proxy.stdout.readline()
+        assert line, (await proxy.stderr.read()).decode()
+        b, _ = await view(pending_host[1] / 'lost-client', json.loads(line)['url'], session=a.selected, identity='lost-client')
+        kind = 'chat/pendingMessageRemoved' if operation == 'queue_remove' else 'chat/pendingMessageSet'
+        (fault / 'drop.json').write_text(json.dumps({'type': kind, 'id': pending_id}))
+        assert not (await b.dispatch(request(b, operation, id=pending_id, text='edited after lost echo')))[0]
+        await wait_for(lambda: (fault / 'dropped.json').exists())
+        echo = json.loads((fault / 'dropped.json').read_text())['params']
+        assert echo['origin']['clientId'] == 'lost-client'
+        assert type(echo['origin']['clientSeq']) is int
+        assert echo['action']['id'] == pending_id and echo['action']['type'] == kind
+        local_id, row = next(iter(b.store.data['outbox'].items()))
+        assert local_id != pending_id and row['args']['id'] == pending_id and row['status'] == 'unknown'
+        await wait_for(lambda: b.transport.online)
+        await b.dispatch(request(b, 'queue_inspect'))
+        assert row['status'] == 'unknown'  # Equal/missing snapshot cannot settle the original mutation.
+        async def invalid_receipt(*args):
+            pytest.fail('Local mutation UUID was never sent as an AHP command ID')
+        monkeypatch.setattr(b.transport, 'receipt', invalid_receipt)
+        assert not (await b.dispatch(request(b, 'retry_delivery', id=local_id)))[0]
+        assert row['status'] == 'unknown'
+        sent = [json.loads(line) for line in (fault / 'sent.jsonl').read_text().splitlines()]
+        mutations = [r for r in sent if r.get('params', {}).get('action', {}).get('id') == pending_id]
+        assert len(mutations) == 1
+        assert local_id not in (fault / 'sent.jsonl').read_text()
+        if operation == 'queue_edit':
+            await wait_for(lambda: 'edited after lost echo' in texts(log))
+            assert texts(log).count('edited after lost echo') == 1
+        else:
+            assert texts(log) == ['seed', 'busy']
+    finally:
+        await a.close()
+        if b:
+            await b.close()
+        if proxy:
+            proxy.terminate()
+            await proxy.wait()
