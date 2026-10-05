@@ -38,6 +38,31 @@ def _message_metadata(history):
             **({'replyTo': history['replyTo']} if 'replyTo' in history else {})}
 
 
+def _notification_text(part, turn_id):
+    """Display attribution only; a historical notice never becomes a new input."""
+    meta = part.get('_meta')
+    history = meta.get('amplifier.dev/history') if isinstance(meta, dict) else None
+    if isinstance(history, dict) and history.get('inputOrigin') == 'steering':
+        message, native = history.get('message'), history.get('nativeInput')
+        if isinstance(message, dict) and isinstance(native, dict):
+            origin, attachments = message.get('origin'), message.get('attachments', [])
+            if (isinstance(origin, dict) and origin.get('kind') == 'user'
+                    and isinstance(message.get('text'), str)
+                    and isinstance(attachments, list) and all(isinstance(a, dict) for a in attachments)
+                    and type(native.get('version')) is int and native['version'] == 1
+                    and native.get('kind') == 'steer'
+                    and isinstance(native.get('id'), str) and native['id']
+                    and history.get('activeInputId') == turn_id):
+                lines = ['You · Steering']
+                if message['text']:
+                    lines.append(message['text'])
+                lines.extend('Attachment · ' + (a['label'] if isinstance(a.get('label'), str) and a['label']
+                                               else 'Attachment') for a in attachments)
+                return '\n'.join(lines)
+    content = part.get('content')
+    return 'System\n' + (content if isinstance(content, str) else '')
+
+
 def _turn_items(turn):
     identity = turn['id']
     message = turn.get('message', {})
@@ -72,6 +97,10 @@ def _turn_items(turn):
                         status=({'streaming': 'running', 'pending-confirmation': 'waiting', 'pending-result-confirmation': 'waiting', 'auth-required': 'waiting', 'completed': 'failed' if tool.get('success') is False else 'completed'}.get(tool.get('status'), tool.get('status', 'unknown'))))
         elif kind == 'error':
             item.update(text=part.get('error', {}).get('message', 'Execution error'), status='failed')
+        elif kind == 'systemNotification':
+            # Keep response-part identity, neutral status and the complete original
+            # descriptor in detail. User/correction kinds grant other UI semantics.
+            item['text'] = _notification_text(part, identity)
         else:
             item['text'] = _text(part.get('title')) or 'Resource · ' + str(part.get('uri') or part.get('resource') or kind)
         items.append(item)

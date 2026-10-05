@@ -100,3 +100,25 @@ Root requires independent source review before normal publication/package.
 Accordingly the wheel/install stages of scripts/qualify_current.py are deferred;
 no new wheel, release, platform build matrix, service, user preview, native
 configuration, production account or live deployment is qualified here.
+# Historical system notifications and steering presentation
+
+Source projection retains every standard notification as a neutral response-part
+notice. Host history metadata identifies user steering only when the original
+user descriptor, native steering input and containing turn agree. The ordinary
+view says You · Steering and keeps exact original text plus attachment labels;
+the complete notification and original descriptors remain inspectable. Generic
+or malformed metadata shows System and the original standard content. No new
+turn, user-message action, canonical reference grant or applied status is created.
+
+Fourteen causal projection cases fail on the preceding source and pass after the
+repair. They cover two steering rows beside a tool and an error, unchanged
+question/order/identities, Unicode and whitespace, attachments, repeated snapshots,
+wrong-turn/foreign/malformed metadata and no inferred English-prefix attribution.
+Two native PTY cases each open and reopen the same controlled history at 80 and
+40 columns, preserving the private draft and checking visible attribution/order.
+The unchanged native renderer is reused by exact hash; no Rust rebuild is needed.
+Combined focused projection, renderer and document checks: 44 pass, one expected
+private-method-archive skip. These are source and actual-renderer controls using
+controlled public-state data, not a fresh installed wheel or full host/native/live
+application qualification. No providers, accounts, execution or network effects
+are involved. Independent review is required before merge or deployment.
