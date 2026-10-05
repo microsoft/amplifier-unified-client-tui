@@ -45,7 +45,7 @@ def main():
     run('installed-isolation', [str(installed / 'bin/python'), '-I', '-c',
         "import importlib.util,amplifier_tui; assert all(importlib.util.find_spec(m) is None for m in ('amplifier_core','amplifier_foundation','amplifier_app_cli')); from pathlib import Path; p=Path(amplifier_tui.__file__).parent; assert (p/'_ahp/bridge.mjs').is_file() and (p/'_bin/amplifier-ratatui').is_file(); print(p)"])
     installed_environment = {**environment, 'TUI_CONNECTED_EXECUTABLE': str(installed / 'bin/amplifier-unified-client-tui')}
-    run('installed-terminal', ['uv', 'run', '--no-sync', 'pytest', '-q', 'tests/test_ahp_terminal.py', '--basetemp', '.state/installed-terminal'], env=installed_environment)
+    run('installed-terminal', ['uv', 'run', '--no-sync', 'pytest', '-q', 'tests/test_ahp_terminal.py', 'tests/test_pending_terminal.py', '--basetemp', '.state/installed-terminal'], env=installed_environment)
     import zipfile
     with zipfile.ZipFile(wheel) as archive:
         names = archive.namelist()

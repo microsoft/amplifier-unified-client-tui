@@ -674,7 +674,7 @@ impl App {
                         "Delivery: {status}\n{}\n\nRetained input:\n{text}\n\nRequest: {id}\nChecking reads the original receipt; it never sends another message.",
                         string(row, "error")
                     ));
-                    if matches!(status.as_str(), "unknown" | "failed") {
+                    if matches!(status.as_str(), "unknown" | "failed") || row["action"] == "conversation.steer.set" {
                         choices.push(interaction::Choice {
                             label: format!(
                                 "Check delivery status · {status} · {}",
@@ -786,6 +786,7 @@ impl App {
                     .collect();
             }
             "commands" if v["session_id"] == self.nav.session => {
+                if v["steer"].is_boolean() { self.controls.steer = v["steer"] == true; }
                 self.ui.commands = v["commands"]
                     .as_array()
                     .unwrap_or(&vec![])
@@ -1289,7 +1290,7 @@ impl App {
                     };
                     self.activate(action);
                 }
-                "message.reply" | "message.replyClear" | "message.read" | "message.reaction" | "message.receipt" | "message.refresh" | "message.submissionInspect" => {
+                "queue" | "queue_edit" | "queue_remove" | "queue_run" | "queue_inspect" | "steer" | "steer_remove" | "steer_inspect" | "message.reply" | "message.replyClear" | "message.read" | "message.reaction" | "message.receipt" | "message.refresh" | "message.submissionInspect" => {
                     // Authorize against the live renderer revision; the backend
                     // applies the same selected-session action as human controls.
                 }
@@ -1299,7 +1300,7 @@ impl App {
         }
         let mut result = json!({"accepted":true,"session":self.nav.session,"revision":self.client_revision,
             "view":self.view,"busy":self.flow.busy,"switchPending":self.nav.switching.is_some(),
-            "actions":["draft.replace","view.select","panel.open","message.reply","message.replyClear","message.read","message.reaction","message.receipt","message.refresh","message.submissionInspect"]});
+            "actions":["draft.replace","view.select","panel.open","message.reply","message.replyClear","message.read","message.reaction","message.receipt","message.refresh","message.submissionInspect","queue","queue_edit","queue_remove","queue_run","queue_inspect","steer","steer_remove","steer_inspect"]});
         result["messages"] = json!(self.items.iter().filter(|item| matches!(item.kind.as_str(), "user" | "assistant"))
             .rev().take(50).map(|item| json!({"id":item.id,"role":item.kind,"preview":item.text.chars().take(400).collect::<String>(),
                 "quotable":self.ui.quote_available && !item.reference.is_null() && !item.historical_only,

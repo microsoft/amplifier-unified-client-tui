@@ -185,7 +185,7 @@ class Transport:
                         if turn['id'] not in state['order']:
                             state['order'].append(turn['id'])
                         state['items'][turn['id']] = _turn_items(turn)
-                    state.update({key: packet.get(key) for key in ('title', 'status', 'activeTurnId', 'turnsNextCursor', 'error')})
+                    state.update({key: packet.get(key) for key in ('title', 'status', 'activeTurnId', 'turnsNextCursor', 'error', 'queuedMessages', 'steeringMessage')})
                 elif event == 'missing':
                     self.sessions_state.pop(packet['uri'], None)
                     self.chat_state.pop(packet['uri'], None)
@@ -282,7 +282,12 @@ class Transport:
         return await self.rpc('managed', operation='receipt', args={'commandId': command_id})
 
     async def actions(self):
-        return {'conversation.send', 'conversation.stop', 'approval.respond', 'session.rename', 'session.create', 'session.history'}
+        base = {'conversation.send', 'conversation.stop', 'approval.respond', 'session.rename', 'session.create', 'session.history'}
+        if self.attached.get('_meta', {}).get('amplifier.dev/host', {}).get('features', {}).get('queue') is True:
+            base |= {'conversation.queue.set', 'conversation.queue.remove'}
+        if self.attached.get('_meta', {}).get('amplifier.dev/host', {}).get('features', {}).get('steer') is True:
+            base |= {'conversation.steer.set', 'conversation.steer.remove'}
+        return base
 
     def supports(self, action):
         manifest = self.attached.get('_meta', {}).get('amplifier.dev/capabilities', {})
@@ -395,6 +400,7 @@ class Transport:
                    'workspace': unquote(urlsplit((source.get('workingDirectories') or [''])[0]).path),
                    'status': 'working' if chat.get('activeTurnId') else 'ready',
                    'activeTurnId': chat.get('activeTurnId'), 'chat': source['defaultChat'],
+                   'queuedMessages': chat.get('queuedMessages') or [], 'steeringMessage': chat.get('steeringMessage'),
                    'messages': [{**item, 'role': item['kind'], 'messageReference': item.get('reference'),
                                  **({'inputId': turn['id'], 'delivery': {'status': 'accepted'}} if item['kind'] == 'user' and item['id'] == 'input:' + turn['id'] else {})}
                                 for turn in turns for item in _turn_items(turn) if item['kind'] in {'user', 'assistant'}],
@@ -436,6 +442,11 @@ class Transport:
         if action == 'conversation.send':
             return await self.rpc('send', chat=chat, text=args['text'], commandId=command_id,
                                   **({'reply': args['reply']} if args.get('reply') else {}))
+        if action in {'conversation.queue.set', 'conversation.queue.remove', 'conversation.steer.set', 'conversation.steer.remove'}:
+            if action not in await self.actions():
+                raise Rejected(422, {'error': 'Host has not advertised this pending-input action'})
+            return await self.rpc('steer' if action.startswith('conversation.steer.') else 'queue', chat=chat, operation='remove' if action.endswith('remove') else 'set',
+                                  pendingId=args['id'], **({'text': args['text']} if 'text' in args else {}))
         if action == 'conversation.stop':
             if not snapshot['activeTurnId']:
                 raise Rejected(422, {'error': 'No active turn to cancel'})

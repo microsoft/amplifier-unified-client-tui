@@ -23,7 +23,7 @@ function publish(uri, action){const state=states.get(uri);if(!state)return;
     const full=!action||action.type==='chat/turnsLoaded';
     const append=(action?.type==='chat/delta'||action?.type==='chat/reasoning')&&turn?.responseParts.some(p=>p.id===action.partId&&['markdown','reasoning'].includes(p.kind));
     output({event:'chat',uri,sequence,title:state.title,status:state.status,activeTurnId:state.activeTurn?.id,
-      turnsNextCursor:state.turnsNextCursor, ...(full?{turns:state.turns,activeTurn:state.activeTurn}:append?{append:{turnId,partId:action.partId,content:action.content}}:{turn}),error:state.error});
+      turnsNextCursor:state.turnsNextCursor, queuedMessages:state.queuedMessages??[], steeringMessage:state.steeringMessage, ...(full?{turns:state.turns,activeTurn:state.activeTurn}:append?{append:{turnId,partId:action.partId,content:action.content}}:{turn}),error:state.error});
   }
 }
 function baseline(snapshot){states.set(snapshot.resource,snapshot.state);cuts.set(snapshot.resource,snapshot.fromSeq);sequence=Math.max(sequence,snapshot.fromSeq);publish(snapshot.resource);}
@@ -110,7 +110,7 @@ async function registerTools(){
   const suffix=createHash('sha256').update(config.clientId).digest('hex').slice(0,16);
   await dispatch(selected,{type:'session/activeClientSet',activeClient:{clientId:config.clientId,displayName:'Amplifier Unified TUI',tools:[
     {name:`amplifier_tui_inspect_${suffix}`,title:'Inspect this terminal view',description:'Read current renderer revision and selected view; private draft only when includeDraft=true.',inputSchema:{type:'object',properties:{includeDraft:{type:'boolean'}}}},
-    {name:`amplifier_tui_action_${suffix}`,title:'Control this terminal view',description:'Use the current renderer revision for private drafts, navigation, quotes or negotiated message metadata. Never submits a prompt.',inputSchema:{type:'object',required:['action','expectedRevision'],properties:{action:{type:'string',enum:['draft.replace','view.select','panel.open','message.reply','message.replyClear','message.read','message.reaction','message.receipt','message.refresh','message.submissionInspect']},expectedRevision:{type:'integer'},args:{type:'object'}}}}
+    {name:`amplifier_tui_action_${suffix}`,title:'Control this terminal view',description:'Use the current renderer revision for private drafts, navigation, quotes or negotiated message metadata. Queue and steering actions explicitly admit selected-chat user text; drafts and navigation never submit a prompt.',inputSchema:{type:'object',required:['action','expectedRevision'],properties:{action:{type:'string',enum:['draft.replace','view.select','panel.open','message.reply','message.replyClear','message.read','message.reaction','message.receipt','message.refresh','message.submissionInspect','queue','queue_edit','queue_remove','queue_run','queue_inspect','steer','steer_remove','steer_inspect']},expectedRevision:{type:'integer'},args:{type:'object'}}}}
   ]}});
 }
 async function command(method,p){
@@ -156,6 +156,12 @@ async function command(method,p){
   }
   if(method==='toolComplete')return dispatch(p.chat,{type:'chat/toolCallComplete',turnId:p.turnId,toolCallId:p.toolCallId,result:p.result});
   if(method==='send')return dispatch(p.chat,{type:'chat/turnStarted',turnId:p.commandId,startedAt:new Date().toISOString(),message:{text:p.text,origin:{kind:'user'},...(p.reply?{_meta:{'amplifier.dev/messageReply':p.reply}}:{})}});
+  if(method==='queue'||method==='steer'){
+    if(initialized?._meta?.['amplifier.dev/host']?.features?.[method]!==true||p.chat!==chatURI)throw Object.assign(new Error('Selected host queue unavailable'),{rejected:true});
+    if(!['set','remove'].includes(p.operation)||typeof p.pendingId!=='string'||!p.pendingId||p.pendingId.length>128||p.operation==='set'&&(typeof p.text!=='string'||!p.text.trim()))throw Object.assign(new Error('Bounded pending user intent required'),{rejected:true});
+    const action=p.operation==='remove'?{type:'chat/pendingMessageRemoved',kind:method==='steer'?'steering':'queued',id:p.pendingId}:{type:'chat/pendingMessageSet',kind:method==='steer'?'steering':'queued',id:p.pendingId,message:{text:p.text,origin:{kind:'user'}}};
+    return dispatch(p.chat,action);
+  }
   if(method==='cancel')return dispatch(p.chat,{type:'chat/turnCancelled',turnId:p.turnId,duration:0});
   if(method==='refreshSession'){if(p.session!==selected)throw Object.assign(new Error('Selection changed'),{rejected:true});const result=await client.request('subscribe',{channel:p.session});if(!result.snapshot)throw new Error('Host omitted selected snapshot');baseline(result.snapshot);return {};}
   if(method==='refreshChat'){if(p.session!==selected)throw Object.assign(new Error('Selection changed'),{rejected:true});const result=await client.request('subscribe',{channel:chatURI,view:{turns:50}});if(!result.snapshot)throw new Error('Host omitted selected chat snapshot');baseline(result.snapshot);return {};}

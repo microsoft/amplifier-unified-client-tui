@@ -31,9 +31,9 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
   mod
 ));
 
-// node_modules/ws/lib/constants.js
+// ../../repo/ahp/node_modules/ws/lib/constants.js
 var require_constants = __commonJS({
-  "node_modules/ws/lib/constants.js"(exports, module) {
+  "../../repo/ahp/node_modules/ws/lib/constants.js"(exports, module) {
     "use strict";
     var BINARY_TYPES = ["nodebuffer", "arraybuffer", "fragments"];
     var hasBlob = typeof Blob !== "undefined";
@@ -54,9 +54,9 @@ var require_constants = __commonJS({
   }
 });
 
-// node_modules/ws/lib/buffer-util.js
+// ../../repo/ahp/node_modules/ws/lib/buffer-util.js
 var require_buffer_util = __commonJS({
-  "node_modules/ws/lib/buffer-util.js"(exports, module) {
+  "../../repo/ahp/node_modules/ws/lib/buffer-util.js"(exports, module) {
     "use strict";
     var { EMPTY_BUFFER } = require_constants();
     var FastBuffer = Buffer[Symbol.species];
@@ -129,9 +129,9 @@ var require_buffer_util = __commonJS({
   }
 });
 
-// node_modules/ws/lib/limiter.js
+// ../../repo/ahp/node_modules/ws/lib/limiter.js
 var require_limiter = __commonJS({
-  "node_modules/ws/lib/limiter.js"(exports, module) {
+  "../../repo/ahp/node_modules/ws/lib/limiter.js"(exports, module) {
     "use strict";
     var kDone = /* @__PURE__ */ Symbol("kDone");
     var kRun = /* @__PURE__ */ Symbol("kRun");
@@ -179,9 +179,9 @@ var require_limiter = __commonJS({
   }
 });
 
-// node_modules/ws/lib/permessage-deflate.js
+// ../../repo/ahp/node_modules/ws/lib/permessage-deflate.js
 var require_permessage_deflate = __commonJS({
-  "node_modules/ws/lib/permessage-deflate.js"(exports, module) {
+  "../../repo/ahp/node_modules/ws/lib/permessage-deflate.js"(exports, module) {
     "use strict";
     var zlib = __require("zlib");
     var bufferUtil = require_buffer_util();
@@ -562,9 +562,9 @@ var require_permessage_deflate = __commonJS({
   }
 });
 
-// node_modules/ws/lib/validation.js
+// ../../repo/ahp/node_modules/ws/lib/validation.js
 var require_validation = __commonJS({
-  "node_modules/ws/lib/validation.js"(exports, module) {
+  "../../repo/ahp/node_modules/ws/lib/validation.js"(exports, module) {
     "use strict";
     var { isUtf8 } = __require("buffer");
     var { hasBlob } = require_constants();
@@ -763,9 +763,9 @@ var require_validation = __commonJS({
   }
 });
 
-// node_modules/ws/lib/receiver.js
+// ../../repo/ahp/node_modules/ws/lib/receiver.js
 var require_receiver = __commonJS({
-  "node_modules/ws/lib/receiver.js"(exports, module) {
+  "../../repo/ahp/node_modules/ws/lib/receiver.js"(exports, module) {
     "use strict";
     var { Writable } = __require("stream");
     var PerMessageDeflate2 = require_permessage_deflate();
@@ -1386,9 +1386,9 @@ var require_receiver = __commonJS({
   }
 });
 
-// node_modules/ws/lib/sender.js
+// ../../repo/ahp/node_modules/ws/lib/sender.js
 var require_sender = __commonJS({
-  "node_modules/ws/lib/sender.js"(exports, module) {
+  "../../repo/ahp/node_modules/ws/lib/sender.js"(exports, module) {
     "use strict";
     var { Duplex } = __require("stream");
     var { randomFillSync } = __require("crypto");
@@ -1879,9 +1879,9 @@ var require_sender = __commonJS({
   }
 });
 
-// node_modules/ws/lib/event-target.js
+// ../../repo/ahp/node_modules/ws/lib/event-target.js
 var require_event_target = __commonJS({
-  "node_modules/ws/lib/event-target.js"(exports, module) {
+  "../../repo/ahp/node_modules/ws/lib/event-target.js"(exports, module) {
     "use strict";
     var { kForOnEventAttribute, kListener } = require_constants();
     var kCode = /* @__PURE__ */ Symbol("kCode");
@@ -2108,9 +2108,9 @@ var require_event_target = __commonJS({
   }
 });
 
-// node_modules/ws/lib/extension.js
+// ../../repo/ahp/node_modules/ws/lib/extension.js
 var require_extension = __commonJS({
-  "node_modules/ws/lib/extension.js"(exports, module) {
+  "../../repo/ahp/node_modules/ws/lib/extension.js"(exports, module) {
     "use strict";
     var { tokenChars } = require_validation();
     function push(dest, name, elem) {
@@ -2261,9 +2261,9 @@ var require_extension = __commonJS({
   }
 });
 
-// node_modules/ws/lib/websocket.js
+// ../../repo/ahp/node_modules/ws/lib/websocket.js
 var require_websocket = __commonJS({
-  "node_modules/ws/lib/websocket.js"(exports, module) {
+  "../../repo/ahp/node_modules/ws/lib/websocket.js"(exports, module) {
     "use strict";
     var EventEmitter = __require("events");
     var https = __require("https");
@@ -3157,9 +3157,9 @@ var require_websocket = __commonJS({
   }
 });
 
-// node_modules/ws/lib/stream.js
+// ../../repo/ahp/node_modules/ws/lib/stream.js
 var require_stream = __commonJS({
-  "node_modules/ws/lib/stream.js"(exports, module) {
+  "../../repo/ahp/node_modules/ws/lib/stream.js"(exports, module) {
     "use strict";
     var WebSocket2 = require_websocket();
     var { Duplex } = __require("stream");
@@ -3255,9 +3255,9 @@ var require_stream = __commonJS({
   }
 });
 
-// node_modules/ws/lib/subprotocol.js
+// ../../repo/ahp/node_modules/ws/lib/subprotocol.js
 var require_subprotocol = __commonJS({
-  "node_modules/ws/lib/subprotocol.js"(exports, module) {
+  "../../repo/ahp/node_modules/ws/lib/subprotocol.js"(exports, module) {
     "use strict";
     var { tokenChars } = require_validation();
     function parse(header) {
@@ -3300,9 +3300,9 @@ var require_subprotocol = __commonJS({
   }
 });
 
-// node_modules/ws/lib/websocket-server.js
+// ../../repo/ahp/node_modules/ws/lib/websocket-server.js
 var require_websocket_server = __commonJS({
-  "node_modules/ws/lib/websocket-server.js"(exports, module) {
+  "../../repo/ahp/node_modules/ws/lib/websocket-server.js"(exports, module) {
     "use strict";
     var EventEmitter = __require("events");
     var http = __require("http");
@@ -3701,7 +3701,7 @@ var require_websocket_server = __commonJS({
   }
 });
 
-// node_modules/@microsoft/agent-host-protocol/dist/types/common/errors.js
+// ../../repo/ahp/node_modules/@microsoft/agent-host-protocol/dist/types/common/errors.js
 var JsonRpcErrorCodes = {
   /** Invalid JSON */
   ParseError: -32700,
@@ -3715,7 +3715,7 @@ var JsonRpcErrorCodes = {
   InternalError: -32603
 };
 
-// node_modules/@microsoft/agent-host-protocol/dist/client/async-queue.js
+// ../../repo/ahp/node_modules/@microsoft/agent-host-protocol/dist/client/async-queue.js
 var AsyncBroadcastQueue = class {
   buffer = [];
   /** Absolute logical position of `buffer[0]` (entries below have been dropped). */
@@ -3850,7 +3850,7 @@ var AsyncBroadcastQueue = class {
   }
 };
 
-// node_modules/@microsoft/agent-host-protocol/dist/client/error.js
+// ../../repo/ahp/node_modules/@microsoft/agent-host-protocol/dist/client/error.js
 var AhpClientError = class extends Error {
   constructor(message, options) {
     super(message, options);
@@ -3897,7 +3897,7 @@ var ClientClosedError = class extends AhpClientError {
   }
 };
 
-// node_modules/@microsoft/agent-host-protocol/dist/client/transport.js
+// ../../repo/ahp/node_modules/@microsoft/agent-host-protocol/dist/client/transport.js
 function encodeMessage(message) {
   return JSON.stringify(message);
 }
@@ -3909,7 +3909,7 @@ function decodeMessage(text) {
   }
 }
 
-// node_modules/@microsoft/agent-host-protocol/dist/client/client.js
+// ../../repo/ahp/node_modules/@microsoft/agent-host-protocol/dist/client/client.js
 var DEFAULT_REQUEST_TIMEOUT_MS = 3e4;
 var DEFAULT_SUBSCRIPTION_BUFFER = 4096;
 function noop() {
@@ -4464,7 +4464,7 @@ var AhpClient = class {
   }
 };
 
-// node_modules/@microsoft/agent-host-protocol/dist/types/common/actions.js
+// ../../repo/ahp/node_modules/@microsoft/agent-host-protocol/dist/types/common/actions.js
 var ActionType;
 (function(ActionType2) {
   ActionType2["RootAgentsChanged"] = "root/agentsChanged";
@@ -4565,7 +4565,7 @@ var ActionType;
   ActionType2["AutomationRunCancelRequested"] = "automationRun/cancelRequested";
 })(ActionType || (ActionType = {}));
 
-// node_modules/@microsoft/agent-host-protocol/dist/types/channels-changeset/state.js
+// ../../repo/ahp/node_modules/@microsoft/agent-host-protocol/dist/types/channels-changeset/state.js
 var ChangesetStatus;
 (function(ChangesetStatus2) {
   ChangesetStatus2["Computing"] = "computing";
@@ -4586,7 +4586,7 @@ var ChangesetOperationScope;
   ChangesetOperationScope2["Range"] = "range";
 })(ChangesetOperationScope || (ChangesetOperationScope = {}));
 
-// node_modules/@microsoft/agent-host-protocol/dist/types/action-origin.generated.js
+// ../../repo/ahp/node_modules/@microsoft/agent-host-protocol/dist/types/action-origin.generated.js
 var IS_CLIENT_DISPATCHABLE = {
   [ActionType.RootAgentsChanged]: false,
   [ActionType.RootActiveSessionsChanged]: false,
@@ -4686,13 +4686,13 @@ var IS_CLIENT_DISPATCHABLE = {
   [ActionType.AutomationRunCancelRequested]: true
 };
 
-// node_modules/@microsoft/agent-host-protocol/dist/types/common/reducer-helpers.js
+// ../../repo/ahp/node_modules/@microsoft/agent-host-protocol/dist/types/common/reducer-helpers.js
 function softAssertNever(value, log) {
   const msg = `Unhandled action type: ${JSON.stringify(value)}`;
   (log ?? console.warn)(msg);
 }
 
-// node_modules/@microsoft/agent-host-protocol/dist/types/channels-root/reducer.js
+// ../../repo/ahp/node_modules/@microsoft/agent-host-protocol/dist/types/channels-root/reducer.js
 function rootReducer(state, action, log) {
   switch (action.type) {
     case ActionType.RootAgentsChanged:
@@ -4718,7 +4718,7 @@ function rootReducer(state, action, log) {
   }
 }
 
-// node_modules/@microsoft/agent-host-protocol/dist/types/channels-session/state.js
+// ../../repo/ahp/node_modules/@microsoft/agent-host-protocol/dist/types/channels-session/state.js
 var SessionLifecycle;
 (function(SessionLifecycle2) {
   SessionLifecycle2["Creating"] = "creating";
@@ -4784,7 +4784,7 @@ var McpAuthRequiredReason;
   McpAuthRequiredReason2["InsufficientScope"] = "insufficientScope";
 })(McpAuthRequiredReason || (McpAuthRequiredReason = {}));
 
-// node_modules/@microsoft/agent-host-protocol/dist/types/channels-session/reducer.js
+// ../../repo/ahp/node_modules/@microsoft/agent-host-protocol/dist/types/channels-session/reducer.js
 var STATUS_ACTIVITY_MASK = (1 << 5) - 1;
 function withStatusFlag(status, flag, set) {
   return set ? status | flag : status & ~flag;
@@ -5133,7 +5133,7 @@ function sessionReducer(state, action, log) {
   }
 }
 
-// node_modules/@microsoft/agent-host-protocol/dist/types/channels-terminal/state.js
+// ../../repo/ahp/node_modules/@microsoft/agent-host-protocol/dist/types/channels-terminal/state.js
 var TerminalLifecycleStatus;
 (function(TerminalLifecycleStatus2) {
   TerminalLifecycleStatus2["Running"] = "running";
@@ -5145,7 +5145,7 @@ var TerminalClaimKind;
   TerminalClaimKind2["Session"] = "session";
 })(TerminalClaimKind || (TerminalClaimKind = {}));
 
-// node_modules/@microsoft/agent-host-protocol/dist/ws/transport.js
+// ../../repo/ahp/node_modules/@microsoft/agent-host-protocol/dist/ws/transport.js
 var WebSocketTransport = class _WebSocketTransport {
   socket;
   inbox = [];
@@ -5310,7 +5310,7 @@ var WebSocketTransport = class _WebSocketTransport {
   }
 };
 
-// node_modules/@microsoft/agent-host-protocol/dist/types/channels-root/state.js
+// ../../repo/ahp/node_modules/@microsoft/agent-host-protocol/dist/types/channels-root/state.js
 var PolicyState;
 (function(PolicyState2) {
   PolicyState2["Enabled"] = "enabled";
@@ -5318,7 +5318,7 @@ var PolicyState;
   PolicyState2["Unconfigured"] = "unconfigured";
 })(PolicyState || (PolicyState = {}));
 
-// node_modules/@microsoft/agent-host-protocol/dist/types/channels-chat/state.js
+// ../../repo/ahp/node_modules/@microsoft/agent-host-protocol/dist/types/channels-chat/state.js
 var ChatOriginKind;
 (function(ChatOriginKind2) {
   ChatOriginKind2["User"] = "user";
@@ -5449,7 +5449,7 @@ var ToolResultContentType;
   ToolResultContentType2["Subagent"] = "subagent";
 })(ToolResultContentType || (ToolResultContentType = {}));
 
-// node_modules/@microsoft/agent-host-protocol/dist/types/channels-resource-watch/state.js
+// ../../repo/ahp/node_modules/@microsoft/agent-host-protocol/dist/types/channels-resource-watch/state.js
 var ResourceChangeType;
 (function(ResourceChangeType2) {
   ResourceChangeType2["Added"] = "added";
@@ -5457,7 +5457,7 @@ var ResourceChangeType;
   ResourceChangeType2["Deleted"] = "deleted";
 })(ResourceChangeType || (ResourceChangeType = {}));
 
-// node_modules/@microsoft/agent-host-protocol/dist/types/channels-automation/state.js
+// ../../repo/ahp/node_modules/@microsoft/agent-host-protocol/dist/types/channels-automation/state.js
 var AutomationOperation;
 (function(AutomationOperation2) {
   AutomationOperation2["Update"] = "update";
@@ -5475,7 +5475,7 @@ var AutomationTriggerKind;
   AutomationTriggerKind2["Event"] = "event";
 })(AutomationTriggerKind || (AutomationTriggerKind = {}));
 
-// node_modules/@microsoft/agent-host-protocol/dist/types/channels-automation-run/state.js
+// ../../repo/ahp/node_modules/@microsoft/agent-host-protocol/dist/types/channels-automation-run/state.js
 var AutomationRunStatus;
 (function(AutomationRunStatus2) {
   AutomationRunStatus2["Pending"] = "pending";
@@ -5490,7 +5490,7 @@ var AutomationRunOriginKind;
   AutomationRunOriginKind2["Trigger"] = "trigger";
 })(AutomationRunOriginKind || (AutomationRunOriginKind = {}));
 
-// node_modules/@microsoft/agent-host-protocol/dist/types/common/commands.js
+// ../../repo/ahp/node_modules/@microsoft/agent-host-protocol/dist/types/common/commands.js
 var ReconnectResultType;
 (function(ReconnectResultType2) {
   ReconnectResultType2["Replay"] = "replay";
@@ -5514,34 +5514,34 @@ var ResourceType;
   ResourceType2["Symlink"] = "symlink";
 })(ResourceType || (ResourceType = {}));
 
-// node_modules/@microsoft/agent-host-protocol/dist/types/channels-session/commands.js
+// ../../repo/ahp/node_modules/@microsoft/agent-host-protocol/dist/types/channels-session/commands.js
 var CompletionItemKind;
 (function(CompletionItemKind2) {
   CompletionItemKind2["UserMessage"] = "userMessage";
 })(CompletionItemKind || (CompletionItemKind = {}));
 
-// node_modules/@microsoft/agent-host-protocol/dist/types/channels-chat/commands.js
+// ../../repo/ahp/node_modules/@microsoft/agent-host-protocol/dist/types/channels-chat/commands.js
 var ChatSourceKind;
 (function(ChatSourceKind2) {
   ChatSourceKind2["Fork"] = "fork";
   ChatSourceKind2["SideChat"] = "sideChat";
 })(ChatSourceKind || (ChatSourceKind = {}));
 
-// node_modules/@microsoft/agent-host-protocol/dist/types/channels-changeset/commands.js
+// ../../repo/ahp/node_modules/@microsoft/agent-host-protocol/dist/types/channels-changeset/commands.js
 var ChangesetOperationTargetKind;
 (function(ChangesetOperationTargetKind2) {
   ChangesetOperationTargetKind2["Resource"] = "resource";
   ChangesetOperationTargetKind2["Range"] = "range";
 })(ChangesetOperationTargetKind || (ChangesetOperationTargetKind = {}));
 
-// node_modules/@microsoft/agent-host-protocol/dist/types/common/notifications.js
+// ../../repo/ahp/node_modules/@microsoft/agent-host-protocol/dist/types/common/notifications.js
 var AuthRequiredReason;
 (function(AuthRequiredReason2) {
   AuthRequiredReason2["Required"] = "required";
   AuthRequiredReason2["Expired"] = "expired";
 })(AuthRequiredReason || (AuthRequiredReason = {}));
 
-// node_modules/@microsoft/agent-host-protocol/dist/types/version/registry.js
+// ../../repo/ahp/node_modules/@microsoft/agent-host-protocol/dist/types/version/registry.js
 var SUPPORTED_PROTOCOL_VERSIONS = Object.freeze([
   "0.9.0",
   "0.8.0",
@@ -5649,12 +5649,12 @@ var ACTION_INTRODUCED_IN = {
   [ActionType.AutomationRunCancelRequested]: "0.8.0"
 };
 
-// node_modules/@microsoft/agent-host-protocol/dist/types/common/timestamps.js
+// ../../repo/ahp/node_modules/@microsoft/agent-host-protocol/dist/types/common/timestamps.js
 function addMillisecondsToTimestamp(timestamp, duration) {
   return new Date(Date.parse(timestamp) + duration).toISOString();
 }
 
-// node_modules/@microsoft/agent-host-protocol/dist/types/channels-chat/reducer.js
+// ../../repo/ahp/node_modules/@microsoft/agent-host-protocol/dist/types/channels-chat/reducer.js
 function tcBase(tc) {
   return {
     toolCallId: tc.toolCallId,
@@ -6360,7 +6360,7 @@ function chatReducer(state, action, log) {
   }
 }
 
-// node_modules/@microsoft/agent-host-protocol/dist/types/channels-resource-watch/reducer.js
+// ../../repo/ahp/node_modules/@microsoft/agent-host-protocol/dist/types/channels-resource-watch/reducer.js
 function resourceWatchReducer(state, action, log) {
   if (action.type === ActionType.ResourceWatchChanged) {
     return state;
@@ -6369,7 +6369,7 @@ function resourceWatchReducer(state, action, log) {
   return state;
 }
 
-// node_modules/ws/wrapper.mjs
+// ../../repo/ahp/node_modules/ws/wrapper.mjs
 var import_stream = __toESM(require_stream(), 1);
 var import_extension = __toESM(require_extension(), 1);
 var import_permessage_deflate = __toESM(require_permessage_deflate(), 1);
@@ -6380,7 +6380,7 @@ var import_websocket = __toESM(require_websocket(), 1);
 var import_websocket_server = __toESM(require_websocket_server(), 1);
 var wrapper_default = import_websocket.default;
 
-// bridge.js
+// ahp/bridge.js
 import { createHash } from "node:crypto";
 import { createInterface } from "node:readline";
 import { readFileSync } from "node:fs";
@@ -6450,6 +6450,8 @@ function publish(uri, action) {
       status: state.status,
       activeTurnId: state.activeTurn?.id,
       turnsNextCursor: state.turnsNextCursor,
+      queuedMessages: state.queuedMessages ?? [],
+      steeringMessage: state.steeringMessage,
       ...full ? { turns: state.turns, activeTurn: state.activeTurn } : append ? { append: { turnId, partId: action.partId, content: action.content } } : { turn },
       error: state.error
     });
@@ -6665,7 +6667,7 @@ async function registerTools() {
   const suffix = createHash("sha256").update(config.clientId).digest("hex").slice(0, 16);
   await dispatch(selected, { type: "session/activeClientSet", activeClient: { clientId: config.clientId, displayName: "Amplifier Unified TUI", tools: [
     { name: `amplifier_tui_inspect_${suffix}`, title: "Inspect this terminal view", description: "Read current renderer revision and selected view; private draft only when includeDraft=true.", inputSchema: { type: "object", properties: { includeDraft: { type: "boolean" } } } },
-    { name: `amplifier_tui_action_${suffix}`, title: "Control this terminal view", description: "Use the current renderer revision for private drafts, navigation, quotes or negotiated message metadata. Never submits a prompt.", inputSchema: { type: "object", required: ["action", "expectedRevision"], properties: { action: { type: "string", enum: ["draft.replace", "view.select", "panel.open", "message.reply", "message.replyClear", "message.read", "message.reaction", "message.receipt", "message.refresh", "message.submissionInspect"] }, expectedRevision: { type: "integer" }, args: { type: "object" } } } }
+    { name: `amplifier_tui_action_${suffix}`, title: "Control this terminal view", description: "Use the current renderer revision for private drafts, navigation, quotes or negotiated message metadata. Queue and steering actions explicitly admit selected-chat user text; drafts and navigation never submit a prompt.", inputSchema: { type: "object", required: ["action", "expectedRevision"], properties: { action: { type: "string", enum: ["draft.replace", "view.select", "panel.open", "message.reply", "message.replyClear", "message.read", "message.reaction", "message.receipt", "message.refresh", "message.submissionInspect", "queue", "queue_edit", "queue_remove", "queue_run", "queue_inspect", "steer", "steer_remove", "steer_inspect"] }, expectedRevision: { type: "integer" }, args: { type: "object" } } } }
   ] } });
 }
 async function command(method, p) {
@@ -6749,6 +6751,12 @@ async function command(method, p) {
   }
   if (method === "toolComplete") return dispatch(p.chat, { type: "chat/toolCallComplete", turnId: p.turnId, toolCallId: p.toolCallId, result: p.result });
   if (method === "send") return dispatch(p.chat, { type: "chat/turnStarted", turnId: p.commandId, startedAt: (/* @__PURE__ */ new Date()).toISOString(), message: { text: p.text, origin: { kind: "user" }, ...p.reply ? { _meta: { "amplifier.dev/messageReply": p.reply } } : {} } });
+  if (method === "queue" || method === "steer") {
+    if (initialized?._meta?.["amplifier.dev/host"]?.features?.[method] !== true || p.chat !== chatURI) throw Object.assign(new Error("Selected host queue unavailable"), { rejected: true });
+    if (!["set", "remove"].includes(p.operation) || typeof p.pendingId !== "string" || !p.pendingId || p.pendingId.length > 128 || p.operation === "set" && (typeof p.text !== "string" || !p.text.trim())) throw Object.assign(new Error("Bounded pending user intent required"), { rejected: true });
+    const action = p.operation === "remove" ? { type: "chat/pendingMessageRemoved", kind: method === "steer" ? "steering" : "queued", id: p.pendingId } : { type: "chat/pendingMessageSet", kind: method === "steer" ? "steering" : "queued", id: p.pendingId, message: { text: p.text, origin: { kind: "user" } } };
+    return dispatch(p.chat, action);
+  }
   if (method === "cancel") return dispatch(p.chat, { type: "chat/turnCancelled", turnId: p.turnId, duration: 0 });
   if (method === "refreshSession") {
     if (p.session !== selected) throw Object.assign(new Error("Selection changed"), { rejected: true });
