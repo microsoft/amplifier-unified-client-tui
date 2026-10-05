@@ -375,7 +375,11 @@ impl App {
             choices
         };
         let detail = if title == "Actions · type to search" {
-            "Choose a task group, or type to search all actions. Nothing here sends your message; Escape returns to your draft.".into()
+            if self.connected {
+                "Choose a task group, or search. Queue admits your draft as shared follow-up work. Steering opens private text for explicit submission. Escape keeps your draft.".into()
+            } else {
+                "Choose a task group, or type to search all actions. Nothing here sends your message; Escape returns to your draft.".into()
+            }
         } else {
             String::new()
         };
