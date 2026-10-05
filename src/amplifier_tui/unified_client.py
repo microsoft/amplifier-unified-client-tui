@@ -75,7 +75,8 @@ class UnifiedBridge:
                 raise ValueError('Client tool input must be bounded inline JSON')
             args = json.loads(tool_input)
             operation = 'inspect' if '_inspect_' in tool['toolName'] else args.get('action')
-            if operation not in {'inspect', 'draft.replace', 'view.select', 'panel.open', 'message.reply', 'message.replyClear', 'message.read', 'message.reaction', 'message.receipt', 'message.refresh', 'message.submissionInspect', 'queue', 'queue_edit', 'queue_remove', 'queue_run', 'queue_inspect', 'steer', 'steer_remove', 'steer_inspect'}:
+            settings_actions = {'settings', 'setting_choices', 'setting_set', 'rename', 'host_effects', 'host_receipt'}
+            if operation not in {'inspect', 'draft.replace', 'view.select', 'panel.open', 'message.reply', 'message.replyClear', 'message.read', 'message.reaction', 'message.receipt', 'message.refresh', 'message.submissionInspect', 'queue', 'queue_edit', 'queue_remove', 'queue_run', 'queue_inspect', 'steer', 'steer_remove', 'steer_inspect'} | settings_actions:
                 raise ValueError('Client action is unavailable')
             token = str(uuid.uuid4())
             future = asyncio.get_running_loop().create_future()
@@ -89,13 +90,46 @@ class UnifiedBridge:
                 self.ui_requests.pop(token, None)
             if not result.get('accepted'):
                 raise ValueError(result.get('error', 'Client refused the action'))
+            if session != self.selected and (operation == 'inspect' or operation in settings_actions):
+                raise ValueError('Client selection changed; no selected settings or naming action applied')
             if operation == 'inspect':
+                result.update(connected=self.online, title=self.session.get('title'),
+                              settings=self.settings_projection(), originalChanges=self.change_receipts())
                 result['quotedSubmissions'] = [{'id': command, 'admission': row.get('admission'), 'execution': row.get('execution')}
                                               for command, row in list(self.messages.submissions().items())[-32:]
                                               if row['session'] == session]
                 result['messageRequests'] = [{'id': command, 'operation': effect['operation'], 'status': effect['status']}
                                              for command, effect in list(self.store.data.get('messageEffects', {}).items())[-32:]
-                                             if effect['session'] == session]
+                                              if effect['session'] == session]
+            if operation in settings_actions:
+                payload = args.get('args', {})
+                allowed = {'settings': set(), 'setting_choices': {'property'},
+                           'setting_set': {'property', 'value'}, 'rename': {'title'},
+                           'host_effects': set(), 'host_receipt': {'id'}}[operation]
+                if not isinstance(payload, dict) or set(payload) != allowed:
+                    raise ValueError('Exact selected settings or naming arguments required')
+                if any(not isinstance(payload[field], str) for field in allowed - {'value'}):
+                    raise ValueError('Selected setting, name and receipt identities must be text')
+                if operation == 'host_receipt' and payload['id'] not in self.change_effects():
+                    raise ValueError('Original settings or naming receipt unavailable in this conversation')
+                ok, reason = await self.dispatch({'op': operation, 'session_id': session,
+                                                 'request_id': token, **payload})
+                if session != self.selected:
+                    raise ValueError('Client selection changed; inspect the original change in its conversation')
+                original = next(({'id': identity, **row} for identity, row in self.change_effects().items()
+                                 if row.get('local_request') == token), None)
+                result.update(accepted=ok, action=operation, result=reason,
+                              settings=self.settings_projection(), originalChanges=self.change_receipts())
+                if original:
+                    result['original'] = original
+                if operation == 'host_receipt':
+                    result['original'] = {'id': payload['id'], **self.change_effects()[payload['id']]}
+                if not ok:
+                    value = {'success': False, 'pastTenseMessage': 'Selected change remains refused or unconfirmed',
+                             'error': {'code': 'CLIENT_ACTION_FAILED', 'message': reason}, 'structuredContent': result}
+                    receipts[key] = {'status': 'completed', 'result': value}
+                    self.store.save()
+                    return value
             if operation.startswith('message.') or operation.startswith('queue') or operation.startswith('steer'):
                 if session != self.selected:
                     raise ValueError('Client selection changed; no message control applied')
@@ -174,13 +208,36 @@ class UnifiedBridge:
             self.send('commands', commands=commands, steer='/steer' in commands)
             self.published_controls = commands
 
+    def settings_projection(self):
+        config = self.session.get('config', {})
+        return [{'id': key, 'label': prop.get('title') or key,
+                 'current': config.get('values', {}).get(key),
+                 'choices': [{'value': value, 'label': prop.get('enumLabels', [])[index]
+                             if index < len(prop.get('enumLabels', [])) else str(value)}
+                            for index, value in enumerate(prop['enum'])]}
+                for key, prop in config.get('schema', {}).get('properties', {}).items()
+                if prop.get('sessionMutable') is True and prop.get('enum')]
+
+    def change_effects(self):
+        effects = {**self.store.data.get('hostEffects', {}), **self.store.data.get('configEffects', {})}
+        # Retain pre-existing naming outbox identities, including unknown records.
+        effects.update({identity: row for identity, row in self.store.data['outbox'].items()
+                        if row.get('action') == 'session.rename'})
+        return {identity: row for identity, row in effects.items() if row.get('session') == self.selected
+                and (row.get('operation') in {'session.configure', 'session.rename'}
+                     or row.get('action') == 'session.rename')}
+
+    def change_receipts(self):
+        return [{'id': identity, 'operation': row.get('operation', row.get('action')), 'status': row['status']}
+                for identity, row in list(self.change_effects().items())[-32:]]
+
     def settings_menu(self, property_id=None, notice=""):
         config = self.session.get('config', {})
         properties = config.get('schema', {}).get('properties', {})
         if property_id is None:
-            rows = [{'id': key, 'label': value.get('title') or key,
-                     'current': dict(zip(value.get('enum', []), value.get('enumLabels', []))).get(config.get('values', {}).get(key), config.get('values', {}).get(key))} for key, value in properties.items()
-                    if value.get('sessionMutable') is True and value.get('enum')]
+            rows = [{'id': row['id'], 'label': row['label'],
+                     'current': next((choice['label'] for choice in row['choices'] if choice['value'] == row['current']), row['current'])}
+                    for row in self.settings_projection()]
             uncertain = any(row.get('session') == self.selected and row.get('status') == 'unknown' for row in self.store.data.get('configEffects', {}).values())
             self.send('settings', properties=rows, uncertain=uncertain, notice=notice)
             return bool(rows), 'Choose a model or setting' if rows else 'This host has not provided changeable settings. Keep your draft and choose another conversation.'
@@ -204,12 +261,15 @@ class UnifiedBridge:
         if len(effects) >= 512:
             return False, 'Saved setting receipts are full. Existing evidence and your draft are kept.'
         identity = str(uuid.uuid4())
-        row = {'session': target, 'operation': 'session.configure', 'args': {'config': {key: value}}, 'status': 'unknown'}
+        row = {'session': target, 'operation': 'session.configure', 'args': {'config': {key: value}},
+               'status': 'unknown', 'local_request': request.get('request_id')}
         effects[identity] = row
         self.store.journal(identity, row)
         self.store.save()
         try:
-            await self.transport.command(target, 'session.configure', row['args'], identity)
+            result = await self.transport.command(target, 'session.configure', row['args'], identity)
+            if result.get('delivery') == 'unknown':
+                raise ValueError('Original setting acknowledgement unavailable')
             if self.selected != target:
                 raise ValueError('Selection changed while setting result was pending')
             snapshot = await self.transport.snapshot(target)
@@ -230,6 +290,45 @@ class UnifiedBridge:
         self.store.save()
         if self.selected == target:
             self.settings_menu(notice=message)
+        return ok, message
+
+    async def rename(self, request, target):
+        title = request.get('title', request.get('text', ''))
+        if self.deleted:
+            return False, 'Conversation removed; use New or Resume to choose another'
+        if not target or 'session.rename' not in self.actions:
+            return False, 'Select a conversation with naming support; your draft is kept.'
+        if not isinstance(title, str) or not title.strip() or len(title.encode()) > 2048:
+            return False, 'Use a nonempty conversation name of at most 2048 bytes; your draft is kept.'
+        effects = self.store.data.setdefault('hostEffects', {})
+        if len(effects) >= 512:
+            return False, 'Saved host-effect receipts are full. Existing evidence and your draft are kept.'
+        identity = str(uuid.uuid4())
+        row = {'session': target, 'operation': 'session.rename', 'args': {'title': title},
+               'status': 'unknown', 'local_request': request.get('request_id')}
+        effects[identity] = row
+        self.store.journal(identity, row)
+        self.store.save()
+        try:
+            result = await self.transport.command(target, 'session.rename', row['args'], identity)
+            if result.get('delivery') == 'unknown':
+                raise ValueError('Original naming acknowledgement unavailable')
+            if self.selected != target:
+                raise ValueError('Selection changed while naming result was pending')
+            snapshot = await self.transport.snapshot(target)
+            self.reconcile(snapshot)
+            if snapshot['session'].get('title') != title:
+                raise ValueError('Accepted echo has no matching name readback')
+            row.update(status='confirmed', observedTitle=title)
+            ok, message = True, 'Conversation named. Your draft is kept; no message was sent.'
+        except Rejected as exc:
+            row.update(status='refused', error=str(exc))
+            ok, message = False, 'This host declined the name. Your draft is kept.'
+        except (OSError, ValueError, TimeoutError) as exc:
+            row['error'] = str(exc)
+            ok, message = False, 'Naming change is not confirmed. Inspect Original receipts; your draft is kept.'
+        self.store.journal(identity, row)
+        self.store.save()
         return ok, message
 
     def items(self):
@@ -551,7 +650,8 @@ class UnifiedBridge:
                     return False, 'Settings could not be loaded. Reconnect and open Model and settings again; your draft is kept.'
             return self.settings_menu(request.get('property') if op == 'setting_choices' else None)
         if op in {'host_review', 'host_apply', 'host_effects', 'host_receipt'}:
-            if not self.online:
+            local_change = self.change_effects().get(request.get('id')) if op == 'host_receipt' else None
+            if not self.online and op != 'host_effects' and not local_change:
                 return False, 'Disconnected; optional read unavailable; draft and original receipts retained'
             try:
                 if op == 'host_review':
@@ -561,6 +661,7 @@ class UnifiedBridge:
                 if op == 'host_apply':
                     return await self.apply_host_review(request, target)
                 effects = {**self.store.data.get('hostEffects', {}), **self.store.data.get('configEffects', {}), **self.messages.effects()}
+                effects.update(self.change_effects())
                 if op == 'host_effects':
                     self.send('host_effects', entries=[{'id': key, **row} for key, row in effects.items()
                                                       if row['session'] == target])
@@ -568,12 +669,16 @@ class UnifiedBridge:
                 row = effects.get(request.get('id'))
                 if not row or row['session'] != target:
                     return False, 'Receipt target differs'
-                if row['operation'] == 'message.reaction':
+                operation_name = row.get('operation', row.get('action'))
+                if operation_name == 'message.reaction':
                     self.send('host_review', purpose='receipt', detail=json.dumps({'original': row, 'limits': 'Only the original message receipt can settle an unknown reaction. Current counts cannot prove it; nothing was repeated.'}, indent=2), label='')
                     return await self.messages.recover(request['id'])
-                if row['operation'] == 'session.configure':
-                    self.send('host_review', purpose='receipt', detail=json.dumps({'original': row, 'currentObservedValues': self.session.get('config', {}).get('values', {}), 'limits': 'Current values do not prove the outcome of an unknown request. Nothing was resent.'}, indent=2), label='')
-                    return True, 'Original setting receipt inspected. Nothing was resent.'
+                if operation_name in {'session.configure', 'session.rename'}:
+                    self.send('host_review', purpose='receipt', detail=json.dumps({'commandId': request['id'], 'original': row,
+                              'currentObservedValues': self.session.get('config', {}).get('values', {}),
+                              'currentObservedTitle': self.session.get('title'),
+                              'limits': 'Current values or title do not prove the outcome of an unknown request. The standard action uses its original echo; this local command ID is not a remote receipt ID. Nothing was resent.'}, indent=2), label='')
+                    return True, 'Original change receipt inspected. Nothing was resent.'
                 self.send('host_review', purpose='receipt', detail=json.dumps({'original': row, 'limits': 'Saved original evidence; lookup does not resend the change.'}, indent=2), label='')
                 operation = 'managedFiles.receipt' if row['operation'] == 'managedFiles.dispose' else 'receipt'
                 result = await self.transport.lifecycle(target, operation, {'commandId': request['id']})
@@ -602,6 +707,8 @@ class UnifiedBridge:
             return True, 'Unsent text copied to composer; nothing submitted'
         if not self.online:
             return False, 'Disconnected; draft retained. Wait for reconnect before sending'
+        if op == 'rename':
+            return await self.rename(request, target)
         if op == 'workspaces':
             page = await self.transport.workspaces(offset=request.get('offset', 0), query=request.get('query', ''))
             self.workspace_choices = {row['id']: row for row in page['items']}
@@ -691,7 +798,7 @@ class UnifiedBridge:
             return False, 'Opening completes independently; choose another conversation afterwards'
         if self.deleted:
             return False, 'Conversation removed; use New or Resume to choose another'
-        if op not in {'submit', 'stop', 'decision', 'rename', 'continue_here', 'retry_delivery'}:
+        if op not in {'submit', 'stop', 'decision', 'continue_here', 'retry_delivery'}:
             return False, 'This action is not available in this conversation. Your draft is kept; check the available Actions.'
         async with self.submission_lock if op == 'submit' and target is None else _Unlocked():
             if op == 'submit' and target != self.selected:
@@ -707,7 +814,6 @@ class UnifiedBridge:
                     'submit': ('conversation.send', {'text': request.get('text', '')}),
                     'stop': ('conversation.stop', {}),
                     'decision': ('approval.respond', {'id': request.get('approval_id'), 'decision': request.get('option')}),
-                    'rename': ('session.rename', {'title': request.get('title', request.get('text', ''))}),
                     'continue_here': ('session.takeover', {}),
                 }[op]
                 if action not in self.actions:
@@ -740,6 +846,8 @@ class UnifiedBridge:
                     row['creation'] = {'workspace': self.workspace, **self.creation_args}
                 self.store.data['outbox'][identity] = row
             if op == 'retry_delivery':
+                if row['action'] == 'session.rename':
+                    return await self.dispatch({**request, 'op': 'host_receipt'})
                 if row['action'].startswith(('conversation.queue.', 'conversation.steer.')) and row['args'].get('id') != identity:
                     return False, 'Original pending change remains unconfirmed; no separate mutation receipt was sent. Current shared state is not proof; original intent kept, nothing resubmitted.'
                 await self.refresh_delivery(row)

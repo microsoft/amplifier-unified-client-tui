@@ -1,6 +1,6 @@
 // Independent JSON-RPC ACP fixture: no host imports and no production models/accounts.
 import readline from 'node:readline';
-import { appendFileSync,readFileSync } from 'node:fs';
+import { appendFileSync,readFileSync,existsSync } from 'node:fs';
 const modelValues=Array.from({length:9},(_,i)=>({value:i===0?'openai/gpt-6-sol':i===1?'openai/gpt-6-astra':`fixture/model-${i}`,name:i===0?'OpenAI / gpt-6-sol':i===1?'OpenAI / gpt-6-astra':`Fixture model ${i}`}));
 const modelOption=value=>({id:'model',name:'Model',type:'select',currentValue:value??modelValues[0].value,options:modelValues});
 const sessions=new Map();let active;let permissionId=1000;const pending=new Map();
@@ -9,7 +9,7 @@ const update=(sessionId,update)=>send({method:'session/update',params:{sessionId
 const reply=(id,result)=>send({id,result});
 for await(const line of readline.createInterface({input:process.stdin})) {
   const message=JSON.parse(line),p=message.params??{};
-  if(message.result!==undefined){pending.get(message.id)?.(message.result);pending.delete(message.id);continue;}
+  if(message.result!==undefined||message.error){pending.get(message.id)?.(message.error?{success:false,error:message.error}:message.result);pending.delete(message.id);continue;}
   if(message.method==='initialize')reply(message.id,{protocolVersion:1,agentInfo:{name:'independent-fixture',version:'1'},agentCapabilities:{loadSession:true,sessionCapabilities:{resume:{},close:{}},promptCapabilities:{image:true,audio:true,embeddedContext:true},_meta:{'amplifier.dev/native':{version:1,history:{version:1,paging:'complete-turns',passive:true}}}},authMethods:[]});
   else if(message.method==='_amplifier/history'){
     const groups=JSON.parse(readFileSync(process.env.FIXTURE_HISTORY,'utf8'));const end=p.cursor?Number(p.cursor):groups.length,start=Math.max(0,end-p.limit);
@@ -37,6 +37,24 @@ for await(const line of readline.createInterface({input:process.stdin})) {
         update(p.sessionId,{sessionUpdate:'tool_call_update',toolCallId:'tool-1',title:'Write file',status:choice.outcome.optionId==='allow'?'completed':'failed',content:[{type:'content',content:{type:'text',text:JSON.stringify(choice)}}]});
       }
       if(text==='slow')await new Promise(resolve=>setTimeout(resolve,180));
+      if(text==='client-changes'){
+        const call=(operation,args)=>new Promise(resolve=>{const requestId=permissionId++;pending.set(requestId,resolve);send({id:requestId,method:'_amplifier/host',params:{sessionId:p.sessionId,operation,args}});});
+        let previous,original;
+        const steps=JSON.parse(readFileSync(process.env.FIXTURE_UI_SCRIPT,'utf8'));
+        const released=async path=>{if(!path)return;const deadline=Date.now()+15000;while(!existsSync(path)){if(Date.now()>deadline)throw Error('Fixture UI pause timed out');await new Promise(resolve=>setTimeout(resolve,10));}};
+        for(const [index,step] of steps.entries()){
+          await released(step.before);
+          const inspected=await call('ui.inspect',{});
+          appendFileSync(process.env.FIXTURE_UI_LOG,JSON.stringify({index,kind:'inspect',result:inspected})+'\n');
+          await released(step.pause);
+          const args={...step.args};if(args.id==='$original')args.id=original??inspected.structuredContent?.originalChanges?.at(-1)?.id;
+          const outcome=await call('ui.action',{action:step.action,expectedRevision:step.stale?previous:inspected.structuredContent?.revision,args});
+          if(outcome.structuredContent?.original?.id)original=outcome.structuredContent.original.id;
+          appendFileSync(process.env.FIXTURE_UI_LOG,JSON.stringify({index,kind:'action',result:outcome})+'\n');
+          previous=inspected.structuredContent?.revision;
+        }
+        update(p.sessionId,{sessionUpdate:'agent_message_chunk',content:{type:'text',text:'Agent changes complete'}});
+      }
       if(text==='client-ui'){
         const call=operation=>async args=>{const requestId=permissionId++;return new Promise(resolve=>{pending.set(requestId,resolve);send({id:requestId,method:'_amplifier/host',params:{sessionId:p.sessionId,operation,args}});});};
         const observed=await call('ui.inspect')({includeDraft:false});

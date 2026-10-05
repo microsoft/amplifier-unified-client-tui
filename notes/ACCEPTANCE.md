@@ -54,3 +54,49 @@ other-client counts in the actual PTY, watch recreation after disconnect, monoto
 scope/generation guards, visible unknown intent until exact receipt, and the inherited
 stale-digest frozen original inspection/copy repair. Source/private intent and installed
 package evidence remain separate from live deployment or real-account acceptance.
+
+
+## Targeted agent settings and naming — source qualification
+
+AGENTCONFIG-01 uses the existing human settings/setting_choices/setting_set and
+rename dispatcher after the live Ratatui revision gate. Inspection returns offered
+mutable choices and bounded original change identities; receipt inspection is
+selected-session read-only. Naming uses the existing hostEffects store and intent
+journal. Pre-existing naming outbox records remain inspectable, and their local
+UUID is never sent as an invented remote receipt ID. No permissions, Stop policy,
+creation, native execution ownership or saved/global settings scope is added.
+
+The candidate qualifies 67 behavior cases: 63 standard AHP, agent settings/naming,
+message and pending-input cases, plus four updated pending-input source PTYs.
+Five new actual-renderer/ACP-agent cases exercise offered model and generic enum
+changes, confirmed/refused outcomes, naming, two private drafts, unflushed keystrokes,
+wrong argument targets, human navigation during an agent request, and real lost
+settings/naming echoes. The owned loopback relay drops the exact client ID/sequence,
+selected session and standard action; re-registration is observed in a later relay
+connection before a new read-only inspection. The lost original client invocation
+reports CLIENT_OUTCOME_UNKNOWN. Its durable original change stays unknown through
+agent receipt inspection and a cold terminal restart; deliberate receipt paging
+shows the original command and uncertainty. Protocol frames prove one mutation,
+no invented remote receipt request, and no replay or extra model prompt.
+
+81 structural/package-boundary tests pass; one private historical-method archive
+check is skipped because the archive is not supplied. All 80 Rust renderer tests
+pass, including settings/naming refusal on stale revisions and pending selection.
+Ruff, direction/link checks and diff whitespace checks pass. A separate causal
+control runs the new agent settings/naming test with the previously accepted 3dcd
+installed Mac ARM wheel: it fails because those agent actions are unavailable.
+The accepted wheel and its earlier qualification remain unchanged.
+
+These are source tests against the independently installed public Host package
+already bound to npm SHA-256 0137e4e5042a56e3593f45b1648418f025a3c37d37ac87269ebb7679e8d20d0a,
+with an independent offline ACP fixture. Ratatui is rebuilt in a separate owned
+copy of the component cache. Terminal images reconstruct actual PTY cells and
+are not physical-device or real-account acceptance. Preliminary fault-observer
+failures are retained separately: exact client identity across re-registration,
+host target removal/reappearance and paged receipt visibility must be observed,
+not assumed from a fixed delay or the current value. They do not qualify source.
+
+Root requires independent source review before normal publication/package.
+Accordingly the wheel/install stages of scripts/qualify_current.py are deferred;
+no new wheel, release, platform build matrix, service, user preview, native
+configuration, production account or live deployment is qualified here.

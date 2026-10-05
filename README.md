@@ -120,7 +120,12 @@ dependent-owner/family protection. `/effects` reads original operation receipts.
 Unknown operations never replay. Escape dismisses a review and retains the composer.
 
 Targeted agent UI tools inspect the actual renderer and use its current revision for
-draft replacement, selection and local panels. A local keystroke invalidates a stale
+draft replacement, selection and local panels. Offered settings inspection/change and
+conversation naming use the same human dispatch. The result identifies the original
+change command and its confirmed, refused or unknown status; host_effects and
+host_receipt expose bounded original settings/naming evidence. Standard naming
+receipts share the existing host-effect store and intent journal; their local UUID
+is not a remote receipt ID. Current values never settle an unknown change. A local keystroke invalidates a stale
 edit before autosave. Device-effect receipts are durable before the action and never
 replay unknown effects. Inspection includes a private draft only when explicitly requested.
 Selection is an admitted asynchronous operation; losing its result remains unknown.
