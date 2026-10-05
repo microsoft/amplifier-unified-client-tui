@@ -40,7 +40,7 @@ dev = [
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
-testpaths = ["tests/test_documents.py", "tests/test_benchmark_observer.py", "tests/test_terminal_raster.py", "tests/test_terminal_guard.py", "tests/test_frontend_bridge.py", "tests/test_unified_projection.py", "tests/test_client_renderer.py", "tests/test_ahp_client.py", "tests/test_ahp_terminal.py", "tests/test_current_package.py", "tests/test_connected_parity.py", "tests/test_messages.py", "tests/test_messages_installed.py", "tests/test_release_manifest.py"]
+testpaths = ["tests/test_documents.py", "tests/test_benchmark_observer.py", "tests/test_terminal_raster.py", "tests/test_terminal_guard.py", "tests/test_frontend_bridge.py", "tests/test_unified_projection.py", "tests/test_client_renderer.py", "tests/test_ahp_client.py", "tests/test_pending_client.py", "tests/test_ahp_terminal.py", "tests/test_current_package.py", "tests/test_connected_parity.py", "tests/test_messages.py", "tests/test_messages_installed.py", "tests/test_release_manifest.py"]
 
 [tool.ruff]
 line-length = 100

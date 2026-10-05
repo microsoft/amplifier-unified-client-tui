@@ -23,6 +23,7 @@ class UnifiedBridge:
         self.reviews = {}
         self.workspace_choices = {}
         self.published_controls = None
+        self.published_followups = None
         self.session = {}
         self.messages = Messages(self)
         self.transport.message_metadata = self.messages.accept
@@ -74,7 +75,7 @@ class UnifiedBridge:
                 raise ValueError('Client tool input must be bounded inline JSON')
             args = json.loads(tool_input)
             operation = 'inspect' if '_inspect_' in tool['toolName'] else args.get('action')
-            if operation not in {'inspect', 'draft.replace', 'view.select', 'panel.open', 'message.reply', 'message.replyClear', 'message.read', 'message.reaction', 'message.receipt', 'message.refresh', 'message.submissionInspect'}:
+            if operation not in {'inspect', 'draft.replace', 'view.select', 'panel.open', 'message.reply', 'message.replyClear', 'message.read', 'message.reaction', 'message.receipt', 'message.refresh', 'message.submissionInspect', 'queue', 'queue_edit', 'queue_remove', 'queue_run', 'queue_inspect', 'steer', 'steer_remove', 'steer_inspect'}:
                 raise ValueError('Client action is unavailable')
             token = str(uuid.uuid4())
             future = asyncio.get_running_loop().create_future()
@@ -95,10 +96,10 @@ class UnifiedBridge:
                 result['messageRequests'] = [{'id': command, 'operation': effect['operation'], 'status': effect['status']}
                                              for command, effect in list(self.store.data.get('messageEffects', {}).items())[-32:]
                                              if effect['session'] == session]
-            if operation.startswith('message.'):
+            if operation.startswith('message.') or operation.startswith('queue') or operation.startswith('steer'):
                 if session != self.selected:
                     raise ValueError('Client selection changed; no message control applied')
-                allowed = {'message_id', 'emoji', 'present', 'id'}
+                allowed = {'message_id', 'emoji', 'present'} if operation.startswith('message.') else {'id', 'text'}
                 payload = args.get('args', {})
                 if not isinstance(payload, dict) or not set(payload) <= allowed:
                     raise ValueError('Exact selected message arguments required')
@@ -131,6 +132,7 @@ class UnifiedBridge:
 
     def initial(self, preserve_draft=False):
         self.published_controls = None
+        self.published_followups = None
         self.messages.preview_key = None
         self.published, self.published_order, self.published_title = {}, [], None
         self.send('snapshot', reset=not preserve_draft, connected=True, ready=True, navigation=True,
@@ -156,6 +158,10 @@ class UnifiedBridge:
 
     def publish_controls(self):
         commands = ['/new', '/resume', '/rename', '/stop', '/deliveries', '/effects']
+        if self.selected and 'conversation.queue.set' in self.actions:
+            commands += ['/queue', '/pending']
+        if self.steering_supported():
+            commands.append('/steer')
         properties = self.session.get('config', {}).get('schema', {}).get('properties', {})
         if self.selected and any(prop.get('sessionMutable') is True and prop.get('enum') for prop in properties.values()):
             commands.append('/settings')
@@ -165,7 +171,7 @@ class UnifiedBridge:
         if getattr(self.transport, 'supports', lambda _: False)('workspace.list'):
             commands.append('/workspaces')
         if self.published_controls != commands:
-            self.send('commands', commands=commands)
+            self.send('commands', commands=commands, steer='/steer' in commands)
             self.published_controls = commands
 
     def settings_menu(self, property_id=None, notice=""):
@@ -227,7 +233,20 @@ class UnifiedBridge:
         return ok, message
 
     def items(self):
-        return self.messages.decorate(project(self.session, self.store.data['outbox']))
+        items = self.messages.decorate(project(self.session, self.store.data['outbox']))
+        pending = self.session.get('steeringMessage')
+        pending_held = bool(pending and pending['message'].get('_meta', {}).get('amplifier.dev/steering', {}).get('held'))
+        for identity, row in self.store.data['outbox'].items():
+            if row['session'] == self.selected and row['action'] == 'conversation.steer.set':
+                disposition = row.get('steeringDisposition', 'unconfirmed' if row['status'] == 'unknown' else 'refused' if row['status'] == 'failed' else 'pending')
+                if disposition == 'pending' and pending_held and pending['id'] == identity:
+                    disposition = 'held'
+                items.append({'id': 'correction:' + identity, 'kind': 'correction', 'text': row['args']['text'],
+                              'status': disposition, 'detail': 'Selected chat steering; host acceptance is not insertion proof'})
+        if pending and not any(item['id'] == 'correction:' + pending['id'] for item in items):
+            items.append({'id': 'correction:' + pending['id'], 'kind': 'correction', 'text': pending['message']['text'],
+                          'status': 'held' if pending_held else 'pending', 'detail': 'Shared pending steering; host acceptance is not insertion proof'})
+        return items
 
     def publish(self):
         self.messages.publish()
@@ -266,6 +285,12 @@ class UnifiedBridge:
                         if row.get('status') == 'pending'), None)
         approval = ({'id': pending['id'], 'prompt': pending.get('prompt', 'Approval requested'),
                      'options': pending.get('options') or ['allow', 'deny']} if pending else None)
+        rows = [{'id': row['id'], 'text': row['message']['text'], 'state': 'queued',
+                 'held': row['message'].get('_meta', {}).get('amplifier.dev/queue', {}).get('held') is True}
+                for row in self.session.get('queuedMessages', [])]
+        if rows != self.published_followups:
+            self.send('followups', rows=rows, paused=False)
+            self.published_followups = rows
         self.send('state', ready=self.online and not blocked and not self.deleted, busy=status in {'working', 'starting', 'stopping'},
                   status=('Disconnected · reconnecting; no input resent' if not self.online else
                           'Choose a conversation or send to start one' if not self.selected else
@@ -411,6 +436,64 @@ class UnifiedBridge:
             self.store.save()
             return False, ('History is still updating, so the recovery copy could not be created. Keep this conversation and inspect Original receipts before trying again.' if 'Indexed family coverage' in str(exc) else 'This change is not confirmed. Open Original receipts before trying again; your draft is kept.')
 
+    def steering_supported(self):
+        capability = self.session.get('agentCapabilities', {}).get('_meta', {}).get('amplifier.dev/native', {}).get('activeSteering', {})
+        return (bool(self.selected) and 'conversation.steer.set' in self.actions
+                and capability.get('version') == 1 and capability.get('mode') == 'request_boundary')
+
+    async def queue_change(self, request, target):
+        steering = request['op'].startswith('steer')
+        prefix = 'conversation.steer.' if steering else 'conversation.queue.'
+        if not target or not self.online or prefix + 'set' not in self.actions or steering and not self.steering_supported():
+            return False, 'Select a connected conversation whose host advertises follow-ups'
+        op = request['op']
+        if op == 'steer' and request.get('id') is not None and request['id'] != target:
+            return False, 'Steering prompt belongs to another conversation; text retained, nothing sent'
+        if op in {'queue_inspect', 'steer_inspect'}:
+            await self.transport.rpc('refreshChat', session=target)
+            if self.selected != target:
+                return False, 'Conversation changed; nothing queued'
+            self.reconcile(await self.transport.snapshot(target))
+            return True, 'Shared pending follow-ups refreshed; no input replayed'
+        if op not in {'queue', 'queue_edit', 'queue_remove', 'queue_run', 'steer', 'steer_remove'}:
+            return False, 'Global pause/run is unavailable; resume a selected held follow-up'
+        rows = ([self.session['steeringMessage']] if self.session.get('steeringMessage') else []) if steering else self.session.get('queuedMessages', [])
+        pending_id = request.get('id')
+        existing = next((row for row in rows if row['id'] == pending_id), None)
+        if op not in {'queue', 'steer'} and existing is None:
+            return False, 'Follow-up changed or already started; refresh before changing it'
+        if op in {'queue', 'steer'} and (self.messages.quote() or request.get('image_id')):
+            return False, 'Queued quotes and attachments are unavailable; your draft and quote are kept'
+        if any(row['session'] == target and row['action'].startswith(prefix)
+               and row['status'] in {'sending', 'unknown'} and row.get('receiptLookup', {}).get('status') not in {'completed', 'failed'} and (op in {'queue', 'steer'} or row['args'].get('id') == pending_id)
+               for row in self.store.data['outbox'].values()):
+            return False, 'An original queue change is unconfirmed; inspect Deliveries without replay'
+        text = existing['message']['text'] if op == 'queue_run' else request.get('text', '')
+        if op not in {'queue_remove', 'steer_remove'} and (not isinstance(text, str) or not text.strip() or len(text.encode()) > 65536 or steering and len(text.encode('utf-16-le')) // 2 > 16000):
+            return False, 'Write bounded follow-up text; existing intent is kept'
+        if len(self.store.data['outbox']) >= 512:
+            return False, 'Original delivery records are full; existing intent is kept'
+        command_id = str(uuid.uuid4())
+        pending_id = command_id if op in {'queue', 'steer'} else pending_id
+        action = prefix + ('remove' if op in {'queue_remove', 'steer_remove'} else 'set')
+        args = {'id': pending_id, **({'text': text} if op not in {'queue_remove', 'steer_remove'} else {})}
+        row = {'session': target, 'chat': self.session['chat'], 'action': action, 'args': args, 'status': 'sending',
+               'local_request': request['request_id'], 'generation': self.generation}
+        self.store.data['outbox'][command_id] = row
+        ok, reason = await self.deliver(command_id, row)
+        if ok:
+            if op == 'steer_remove':
+                for original, intent in self.store.data['outbox'].items():
+                    if intent['session'] == target and intent['action'] == 'conversation.steer.set' and intent['args']['id'] == pending_id:
+                        intent['steeringDisposition'] = 'withdrawn'
+                        self.store.journal(original, intent)
+                self.store.save()
+                self.publish()
+            if op == 'queue' and self.store.data['drafts'].get(target) == text:
+                self.store.draft(target, '')
+            return True, 'Host acknowledged steering for this chat/current-or-next turn; insertion is not confirmed' if steering else 'Host saved the queue change; execution remains separate'
+        return False, reason
+
     async def dispatch(self, request):
         op = request.get('op')
         if op == 'client_ui_reply':
@@ -421,6 +504,11 @@ class UnifiedBridge:
         target = request.get('session_id') or None
         if target != self.selected:
             return False, 'This control belongs to another conversation; nothing sent'
+        if op.startswith('queue') or op in {'steer', 'steer_remove', 'steer_inspect'}:
+            try:
+                return await self.queue_change(request, target)
+            except (Rejected, OSError, ValueError, TimeoutError) as exc:
+                return False, str(exc) or 'Queue change unavailable; original intent kept'
         if op in {'draft', 'editor_draft'}:
             self.store.draft(target, request.get('text', ''))
             return True, 'Draft saved locally'
@@ -612,7 +700,7 @@ class UnifiedBridge:
             if op == 'retry_delivery':
                 identity = request.get('id')
                 row = self.store.data['outbox'].get(identity)
-                if not row or row.get('session') != target or row['status'] not in {'unknown', 'failed'}:
+                if not row or row.get('session') != target or (row['status'] not in {'unknown', 'failed'} and row['action'] != 'conversation.steer.set'):
                     return False, 'Delivery changed; inspect it again'
             else:
                 action, args = {
@@ -656,8 +744,19 @@ class UnifiedBridge:
                 if row['session']:
                     try:
                         receipt = await self.transport.receipt(row['session'], identity)
-                    except (OSError, ValueError, TimeoutError) as exc:
+                    except (Rejected, OSError, ValueError, TimeoutError) as exc:
                         return False, 'Receipt unavailable: ' + str(exc) + '; nothing resubmitted'
+                    if row['action'] == 'conversation.steer.set':
+                        if not isinstance(receipt, dict) or receipt.get('commandId') != identity or receipt.get('channel') != row.get('chat'):
+                            return False, 'Receipt identity changed; original steering kept'
+                        row['receiptLookup'] = receipt
+                        disposition = {'completed': 'applied', 'failed': 'held'}.get(receipt.get('status'))
+                        row['steeringDisposition'] = (disposition if disposition and str(receipt.get('detail', '')).startswith('steering:' + disposition + ':')
+                                                      else 'pending' if receipt.get('status') in {'admitted', 'dispatching'} else 'unconfirmed')
+                        self.store.journal(identity, row)
+                        self.store.save()
+                        self.publish()
+                        return True, 'Steering receipt: ' + str(receipt) + '; nothing resubmitted'
                     return False, 'Receipt: ' + str(receipt) + '; nothing resubmitted'
                 try:
                     receipt = await self.transport.creation_receipt(row['create_id'], row.get('creation', {}).get('managed', False))
@@ -703,7 +802,7 @@ class UnifiedBridge:
                     row['error'] = 'Unified saved this request, but execution is unconfirmed.'
                 else:
                     row.pop('error', None)
-                if row['action'] != 'conversation.send':
+                if not uncertain and row['action'] not in {'conversation.send', 'conversation.steer.set'}:
                     self.store.journal(identity, row)
                     del self.store.data['outbox'][identity]
                 self.store.save()

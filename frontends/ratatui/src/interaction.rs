@@ -331,6 +331,8 @@ impl App {
                         Action::HostReview(purpose) => self.ui.commands.contains(&format!("/{purpose}")),
                         Action::Workspaces(_, _) => self.ui.commands.contains(&"/workspaces".into()),
                         Action::Models => self.ui.commands.contains(&"/settings".into()),
+                        Action::CorrectActive | Action::Corrections => self.ui.commands.contains(&"/steer".into()),
+                        Action::QueueList | Action::QueueDraft => self.ui.commands.contains(&"/queue".into()),
                         _ => true,
                     };
                     advertised && matches!(
@@ -343,6 +345,10 @@ impl App {
                             | Action::Rename
                             | Action::Deliveries
                             | Action::Models
+                            | Action::QueueList
+                            | Action::QueueDraft
+                            | Action::CorrectActive
+                            | Action::Corrections
                             | Action::HostReview(_)
                             | Action::HostEffects
                             | Action::Workspaces(_, _)
@@ -520,7 +526,7 @@ impl App {
                     choice("Change and command evidence — agent, call and source versions", Action::Inspect("changes".into(), None)),
                     choice(if self.connected { "Model and settings — change offered conversation options" } else { "Model catalog — discover configured providers' model IDs" }, Action::Models),
                     choice("New provider composition — fork captured public context", Action::ForkComposition),
-                    choice("Pending follow-ups — inspect / pause / run / remove", Action::QueueList),
+                    choice(if self.connected { "Shared follow-ups — edit / resume held / remove" } else { "Pending follow-ups — inspect / pause / run / remove" }, Action::QueueList),
                     choice("Corrections — inspect insertion status / copy text", Action::Corrections),
                     choice("Questions — answer / review / cancel clarification requests", Action::Questions),
                     choice("Workspace changes — read-only Git status / diff", Action::WorkspaceChanges),
@@ -552,7 +558,7 @@ impl App {
                         Action::Diagnostics,
                     ),
                     choice(
-                        "Correct active turn — steer (not a queued follow-up)",
+                        if self.connected { "Steer selected chat — active or next turn" } else { "Correct active turn — steer (not a queued follow-up)" },
                         Action::CorrectActive,
                     ),
                     choice(
@@ -854,7 +860,7 @@ impl App {
             Action::QueueEdit(id) => {
                 if let Some(row) = self.flow.rows.iter().find(|r| r["id"] == id) {
                     let text = string(row, "text");
-                    self.send(json!({"op":"queue_pause"}));
+                    if !self.connected { self.send(json!({"op":"queue_pause"})); }
                     self.prompt("Edit waiting follow-up");
                     let prompt = self.flow.prompt.as_mut().unwrap();
                     prompt.identity = Some(id);
@@ -909,8 +915,9 @@ impl App {
                 } else { self.status = "Question expired; no answer delivered".into(); }
             }
             Action::Corrections => {
-                let choices = self.items.iter().rev().filter(|i| i.kind == "correction").take(100)
+                let mut choices: Vec<Choice> = self.items.iter().rev().filter(|i| i.kind == "correction").take(100)
                     .map(|i| choice(format!("{} · {}", i.status, safe(&i.text.chars().take(100).collect::<String>()).replace('\n', " ↵ ")), Action::Message(i.id.clone()))).collect();
+                if self.connected { choices.insert(0, choice("Refresh shared steering (read only)", Action::QueueControl("steer_inspect".into(), String::new()))); }
                 self.menu("Corrections · latest 100 · applied means inserted, not task success", choices);
                 self.ui.menu.as_mut().unwrap().detail = "Pending waits for runtime insertion. Unconfirmed means no insertion acknowledgement; never retried or queued automatically. Open to inspect / copy the original correction.".into();
             }
@@ -1097,7 +1104,7 @@ impl App {
                 [
                     ("First conversation", "Describe one task, then Enter sends it. Alt+Enter adds a newline; paste stays text. No example here is sent automatically.\n\nLive presets can use file/shell tools and incur model charges; this is not a sandbox. A FIXTURE RUNTIME is a scripted demonstration, not an AI assistant.\n\nSystem shows mounted tools and authored definitions. An available definition is not proof that an external service is running."),
                     ("Editing and finding actions", "Tab completes ./paths, @skills and /commands; otherwise it focuses visible controls. Enter activates the focused control. Actions opens local search; Escape returns to your unchanged draft.\n\nUp/Down recalls sent messages at editor line boundaries. Returning past the newest recalled entry restores your draft. Insert text file previews captured bytes before insertion; Edit in external editor never sends them."),
-                    ("Queue or steer?", "Queue stores a follow-up for a later task. Pending follow-ups lets you pause, edit, remove or explicitly run queued work.\n\nChange task (steer) opens a separate correction for current work when supported. Accepted is not yet inserted: inspect Corrections for the observed status.\n\nStop requests cancellation and holds pending follow-ups. It cannot undo file or command effects."),
+                    ("Queue or steer?", "Queue stores a follow-up for a later task. Connected pending follow-ups lets you edit, remove or explicitly resume one held entry. Natural completion advances unheld work.\n\nSteer opens separate text for the selected chat current or next turn when supported. Accepted is not yet inserted: inspect Corrections for the observed status.\n\nStop requests cancellation and holds pending follow-ups. It cannot undo file or command effects."),
                     ("When the assistant waits", "Review decision opens an actual permission request and its offered options. Answer question opens a clarification, where you choose or write information and explicitly submit after review. These are different controls.\n\nLook for the waiting card beside the composer. Escape preserves local intent; it does not answer or grant permission. Modes changes session policy; the mode badge stays visible."),
                     ("Copy and return later", "The normal conversation uses terminal selection and native history. In tmux, enter copy mode (normally prefix then [) and scroll. Menus and inspection temporarily own the mouse.\n\nTranscript offers reflowed source inspection; Export conversation writes private Markdown. Quit saves supported state; Resume offers a picker and never repeats old tool operations. Interrupted work may require an explicitly acknowledged historical recovery, not exact context repair."),
                     ("Understand what happened", "Delegated work shows child progress and historical receipts. Activity evidence and Review show source tool results; a completed turn does not prove every tool succeeded or tests passed.\n\nWorkspace changes is read-only Git inspection, not attribution. Context intelligence distinguishes observed usage, configured local capture and remote dispatch; unavailable is not zero."),

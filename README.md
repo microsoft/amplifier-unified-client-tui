@@ -87,8 +87,17 @@ updates are unavailable. Watches never settle unknown original requests.
 
 Permission choices preserve the options supplied by the agent. Stop uses standard
 cancel; it does not promise force termination or undo. Rename changes the shared
-session title. Unsupported queue, steer, takeover, history editing and device actions
-refuse explicitly, without converting a command into a model prompt.
+session title. `/queue` and `/pending` use an advertised shared host queue: explicit
+Queue admits text, saved edits and per-entry Resume rearm the offered identity, and
+Remove refuses already consumed input. Natural completion advances unheld work;
+cancellation, failure and host restart hold it. Opening this client never rearms work.
+`/steer` requires advertised Host and selected-agent support. It opens private text
+for explicit submission to this chat's active or next turn. Host acknowledgement and
+pending removal do not prove insertion. Corrections preserve original IDs and
+`/deliveries` checks exact applied, held or unknown receipts without resubmission.
+Quoted queue inputs and attachments refuse while preserving draft/quote. Unsupported
+takeover, history editing and device actions refuse explicitly, without converting a
+command into a model prompt.
 
 `/workspaces` pages existing host-authorized directories. Choosing one changes only
 this client and opens an unsent composer; `/resume` uses server-filtered root sessions
@@ -136,7 +145,8 @@ snapshots. Catalog cursors are discarded after reconnection or invalidation.
 | Native module/provider configuration beyond standard schema | Host capability owner; no private runtime import or guessed setting |
 | Independent recovery copy / managed-file review | Negotiated preserve-history lifecycle; passive review, explicit exact-revision confirmation, original effect receipts |
 | Workspace discovery / scoped root sessions | Negotiated workspace.list/workspace.sessions; 50-row opaque cursor pages; local private selection |
-| Queue, steer, force stop, takeover, history editing | Explicitly unavailable until negotiated and mapped |
+| Queue and steer | Advertised standard pending actions; per-entry held rearm, selected-chat current/next steering, exact original receipts; new native UI requires rebuilt PTY qualification |
+| Force stop, takeover, history editing | Explicitly unavailable until negotiated and mapped |
 | Voice/camera/clipboard/canvas/publishing | No claim of connected device/rich-feature support; use an advertised capable client |
 | Agent access to terminal-local UI | Standard client-provided inspect/action tools; actual renderer revision checks protect unflushed keystrokes; no permanent draft mirror |
 | Standalone execution | Not part of this independent client |

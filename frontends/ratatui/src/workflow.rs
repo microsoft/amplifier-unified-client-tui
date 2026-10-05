@@ -277,14 +277,18 @@ impl App {
                 }
                 if prompt.kind != "Find in conversation" {
                     prompt.pending = Some((self.request + 1).to_string());
-                    let op = if prompt.kind == "Correct active turn" {
+                    let op = if matches!(prompt.kind.as_str(), "Correct active turn" | "Steer selected conversation") {
                         "steer"
                     } else if prompt.identity.is_some() {
                         "queue_edit"
                     } else {
                         "rename"
                     };
-                    self.send(json!({"op":op, "id":prompt.identity, "turn_id":prompt.identity, "text":value}));
+                    if prompt.kind == "Steer selected conversation" {
+                        self.send(json!({"op":op, "id":prompt.identity, "text":value}));
+                    } else {
+                        self.send(json!({"op":op, "id":prompt.identity, "turn_id":prompt.identity, "text":value}));
+                    }
                     self.flow.prompt = Some(prompt);
                 } else {
                     self.find_messages(&value);
@@ -360,6 +364,12 @@ impl App {
             if self.ui.quote_available { choices.push(choice("Reply with private quote — nothing sent", Action::Reply(id.clone()), "")); }
             if self.ui.reactions_available { choices.push(choice("Inspect shared reactions — no prompt", Action::MessageRead(id.clone()), "")); }
         }
+        if self.connected && item.kind == "correction" && matches!(item.status.as_str(), "pending" | "held") {
+            if let Some(original) = id.strip_prefix("correction:") {
+                choices.push(choice("Withdraw if still pending — refresh refuses consumed input",
+                    Action::QueueControl("steer_remove".into(), original.into()), "Already consumed steering cannot be withdrawn."));
+            }
+        }
         if reuse {
             choices.push(choice(
                 "Reuse correction as an unsent draft — review first",
@@ -375,6 +385,22 @@ impl App {
     }
 
     pub fn queue_menu(&mut self) {
+        if self.connected {
+            if !self.ui.commands.contains(&"/queue".into()) {
+                self.status = "This host does not advertise pending follow-ups".into();
+                return;
+            }
+            let mut choices = vec![
+                choice("Queue current draft as a follow-up", Action::QueueDraft, ""),
+                choice("Refresh shared follow-ups (read only)", Action::QueueControl("queue_inspect".into(), String::new()), ""),
+            ];
+            for row in &self.flow.rows {
+                choices.push(choice(format!("{} · {}", if row["held"] == true { "held" } else { "waiting" }, safe(&string(row, "text")).chars().take(100).collect::<String>()), Action::QueueItem(string(row, "id")), ""));
+            }
+            self.menu("Shared follow-ups · host owned", choices);
+            self.ui.menu.as_mut().unwrap().detail = "Natural completion advances waiting work. Stop, failure and host restart hold it. Resume one held entry explicitly. Editing or removing already started work refuses. Unknown changes remain in Deliveries; nothing replays.".into();
+            return;
+        }
         let mut choices = vec![
             choice("Queue current draft as a follow-up", Action::QueueDraft, ""),
             choice(
@@ -465,8 +491,11 @@ impl App {
             ));
         }
         if row["state"] == "queued" {
+            if self.connected && row["held"] == true {
+                choices.push(choice("Resume this held follow-up (may start work)", Action::QueueControl("queue_run".into(), id.clone()), "Explicitly rearm this original pending identity."));
+            }
             choices.push(choice(
-                "Edit waiting follow-up (pauses the queue)",
+                if self.connected { "Edit waiting follow-up (saving rearms it)" } else { "Edit waiting follow-up (pauses the queue)" },
                 Action::QueueEdit(id.clone()),
                 "",
             ));
@@ -489,7 +518,7 @@ impl App {
             return;
         }
         let w = outer.width.saturating_sub(4).min(100);
-        let correction = prompt.kind == "Correct active turn";
+        let correction = matches!(prompt.kind.as_str(), "Correct active turn" | "Steer selected conversation");
         let height = if correction { 7 } else { 5 };
         let area = Rect::new(
             (outer.width - w) / 2,
@@ -524,7 +553,9 @@ impl App {
             text(
                 f,
                 Rect::new(area.x + 1, area.y + 4, area.width - 2, 2),
-                if area.width < 60 {
+                if prompt.kind == "Steer selected conversation" {
+                    "Selected chat: current or next turn.\nAcknowledgement is not insertion proof."
+                } else if area.width < 60 {
                     "Waits for tool return.\nStop requests cancellation."
                 } else {
                     "Correction waits for the next input boundary.\nStop requests cancellation; nothing is undone."

@@ -101,6 +101,16 @@ impl App {
         );
     }
     pub fn correct_active(&mut self) {
+        if self.connected {
+            if !self.controls.steer || self.nav.session.is_empty() {
+                self.status = "This selected agent does not advertise standard steering".into();
+                return;
+            }
+            self.prompt("Steer selected conversation");
+            self.flow.prompt.as_mut().unwrap().identity = Some(self.nav.session.clone());
+            self.status = "Applies to this chat's active or next turn. Host acknowledgement is not confirmed insertion. Nothing is sent until Enter.".into();
+            return;
+        }
         if !self.controls.steer || !self.flow.busy || self.controls.turn.is_empty() {
             self.status =
                 "Correction needs an active turn and a supported orchestrator; nothing sent".into();
