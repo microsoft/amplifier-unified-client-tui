@@ -471,7 +471,7 @@ impl App {
             }
             "host_effects" => {
                 let choices = v["entries"].as_array().unwrap_or(&vec![]).iter().map(|row| {
-                    let operation = match row["operation"].as_str().unwrap_or("") { "session.configure" => "Conversation setting", "fork" => "Recovery copy", "managedFiles.dispose" => "Owned file cleanup", _ => "Saved change" };
+                    let operation = match row["operation"].as_str().unwrap_or("") { "session.configure" => "Conversation setting", "session.rename" => "Conversation name", "fork" => "Recovery copy", "managedFiles.dispose" => "Owned file cleanup", _ => "Saved change" };
                     let status = match row["status"].as_str().unwrap_or("") { "confirmed" => "Confirmed", "refused" => "Declined", "unknown" => "Not confirmed", _ => "Result recorded" };
                     interaction::choice(format!("{} · {}", operation, status), Action::HostReceipt(string(row, "id")))
                 }).collect();
@@ -1290,7 +1290,7 @@ impl App {
                     };
                     self.activate(action);
                 }
-                "queue" | "queue_edit" | "queue_remove" | "queue_run" | "queue_inspect" | "steer" | "steer_remove" | "steer_inspect" | "message.reply" | "message.replyClear" | "message.read" | "message.reaction" | "message.receipt" | "message.refresh" | "message.submissionInspect" => {
+                "settings" | "setting_choices" | "setting_set" | "rename" | "host_effects" | "host_receipt" | "queue" | "queue_edit" | "queue_remove" | "queue_run" | "queue_inspect" | "steer" | "steer_remove" | "steer_inspect" | "message.reply" | "message.replyClear" | "message.read" | "message.reaction" | "message.receipt" | "message.refresh" | "message.submissionInspect" => {
                     // Authorize against the live renderer revision; the backend
                     // applies the same selected-session action as human controls.
                 }
@@ -1300,7 +1300,7 @@ impl App {
         }
         let mut result = json!({"accepted":true,"session":self.nav.session,"revision":self.client_revision,
             "view":self.view,"busy":self.flow.busy,"switchPending":self.nav.switching.is_some(),
-            "actions":["draft.replace","view.select","panel.open","message.reply","message.replyClear","message.read","message.reaction","message.receipt","message.refresh","message.submissionInspect","queue","queue_edit","queue_remove","queue_run","queue_inspect","steer","steer_remove","steer_inspect"]});
+            "actions":["draft.replace","view.select","panel.open","message.reply","message.replyClear","message.read","message.reaction","message.receipt","message.refresh","message.submissionInspect","queue","queue_edit","queue_remove","queue_run","queue_inspect","steer","steer_remove","steer_inspect","settings","setting_choices","setting_set","rename","host_effects","host_receipt"]});
         result["messages"] = json!(self.items.iter().filter(|item| matches!(item.kind.as_str(), "user" | "assistant"))
             .rev().take(50).map(|item| json!({"id":item.id,"role":item.kind,"preview":item.text.chars().take(400).collect::<String>(),
                 "quotable":self.ui.quote_available && !item.reference.is_null() && !item.historical_only,
@@ -2266,6 +2266,23 @@ mod tests {
         let applied = app.client_ui(&json!({"operation":"draft.replace","expectedRevision":current["revision"],"args":{"text":"replacement"}}));
         assert_eq!(applied["accepted"], true);
         assert_eq!(app.draft.lines().join("\n"), "replacement");
+    }
+
+    #[test]
+    fn settings_and_naming_require_current_renderer_revision_and_idle_selection() {
+        for operation in ["settings", "setting_choices", "setting_set", "rename", "host_effects", "host_receipt"] {
+            let mut app = App::new(vec!["true".into()]).unwrap();
+            app.ready = true;
+            let before = app.client_ui(&json!({"operation":"inspect"}));
+            app.key(event::KeyEvent::new(KeyCode::Char('x'), KeyModifiers::NONE));
+            assert_eq!(app.client_ui(&json!({"operation":operation,"expectedRevision":before["revision"]}))["accepted"], false);
+            let current = app.client_ui(&json!({"operation":"inspect"}));
+            app.nav.switching = Some("pending".into());
+            assert_eq!(app.client_ui(&json!({"operation":operation,"expectedRevision":current["revision"]}))["accepted"], false);
+            app.nav.switching = None;
+            assert_eq!(app.client_ui(&json!({"operation":operation,"expectedRevision":current["revision"]}))["accepted"], true);
+            assert_eq!(app.draft.lines().join("\n"), "x");
+        }
     }
 
     #[test]

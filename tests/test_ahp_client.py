@@ -25,7 +25,7 @@ async def ahp_host(tmp_path):
     config.write_text(json.dumps({'stateDirectory': str(tmp_path / 'host'), 'port': 0,
         'allowedWorkspaceRoots': [str(tmp_path)], 'engines': [{'id': 'fixture', 'label': 'ACP Fixture',
         'command': 'node', 'args': [str(ROOT / 'tests/fixtures/acp_agent.mjs')],
-        'env': {'FIXTURE_LOG': str(log), 'FIXTURE_MODELS': '1', 'FIXTURE_CONFIG_LOG': str(tmp_path / 'settings.jsonl')}}]}))
+        'env': {'FIXTURE_LOG': str(log), 'FIXTURE_MODELS': '1', 'FIXTURE_CONFIG_LOG': str(tmp_path / 'settings.jsonl'), 'FIXTURE_UI_SCRIPT': str(tmp_path / 'ui-script.json'), 'FIXTURE_UI_LOG': str(tmp_path / 'ui-results.jsonl')}}]}))
     entry = str(ROOT / 'tests/fixtures/ahp_fixture_host.mjs') if os.environ.get('AHP_HOST_MODULE') else ENTRY
     process = await asyncio.create_subprocess_exec('node', entry, '--config', str(config),
         stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
