@@ -145,7 +145,7 @@ snapshots. Catalog cursors are discarded after reconnection or invalidation.
 | Native module/provider configuration beyond standard schema | Host capability owner; no private runtime import or guessed setting |
 | Independent recovery copy / managed-file review | Negotiated preserve-history lifecycle; passive review, explicit exact-revision confirmation, original effect receipts |
 | Workspace discovery / scoped root sessions | Negotiated workspace.list/workspace.sessions; 50-row opaque cursor pages; local private selection |
-| Queue and steer | Advertised standard pending actions; per-entry held rearm, selected-chat current/next steering, exact original receipts; new native UI requires rebuilt PTY qualification |
+| Queue and steer | Advertised standard pending actions; per-entry held rearm, selected-chat current/next steering, exact original receipts; Mac ARM component PTYs qualified with an independent ACP fixture; installed-wheel and other-platform qualification remain separate |
 | Force stop, takeover, history editing | Explicitly unavailable until negotiated and mapped |
 | Voice/camera/clipboard/canvas/publishing | No claim of connected device/rich-feature support; use an advertised capable client |
 | Agent access to terminal-local UI | Standard client-provided inspect/action tools; actual renderer revision checks protect unflushed keystrokes; no permanent draft mirror |
