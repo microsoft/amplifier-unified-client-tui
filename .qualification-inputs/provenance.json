@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "purpose": "Temporary independent public host input for four-platform TUI qualification; no application history or account data",
+  "repository": "microsoft/amplifier-unified-host",
+  "sourceCommit": "bca21d54af570ce756cc29880538a00c728e300d",
+  "filename": "host-796a15.tgz",
+  "bytes": 378588,
+  "sha256": "796a15f3c97731b8aa8d12c991df66af6f5d01f74db9d000bab9558ff9d4e6a8"
+}

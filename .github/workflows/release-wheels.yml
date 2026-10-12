@@ -56,7 +56,7 @@ jobs:
           rustup default 1.93.0
           node -e "if(Number(process.versions.node.split('.')[0])<22)process.exit(1)"
           uv sync --no-sources
-      - name: Fetch reviewed independent host artifact
+      - name: Install exact reviewed independent host artifact
         run: |
           python - <<'PY'
           import json
@@ -71,8 +71,15 @@ jobs:
               "name": "tui-host-qualification-consumer", "version": "0.0.0", "private": True
           }) + "\n")
           PY
-          curl --fail --location --proto '=https' "$HOST_TARBALL_URL" -o .state/host.tgz
-          python -c "import hashlib,os,pathlib; assert hashlib.sha256(pathlib.Path('.state/host.tgz').read_bytes()).hexdigest()==os.environ['HOST_TARBALL_SHA256']"
+          python - <<'PY'
+          import hashlib,json,shutil
+          from pathlib import Path
+          p=json.loads(Path('.qualification-inputs/provenance.json').read_text())
+          source=Path('.qualification-inputs/host-796a15.tgz')
+          assert source.stat().st_size==p['bytes']
+          assert hashlib.sha256(source.read_bytes()).hexdigest()==p['sha256']=='796a15f3c97731b8aa8d12c991df66af6f5d01f74db9d000bab9558ff9d4e6a8'
+          shutil.copyfile(source,'.state/host.tgz')
+          PY
           TUI_HOST_ROOT="$(pwd -P)/.state/host"
           test "$(npm --prefix "$TUI_HOST_ROOT" --global=false --workspaces=false prefix)" = "$TUI_HOST_ROOT"
           test "$(npm --prefix "$TUI_HOST_ROOT" --global=false --workspaces=false root)" = "$TUI_HOST_ROOT/node_modules"
@@ -88,10 +95,20 @@ jobs:
           uv run --no-sync python scripts/release_manifest.py validate .release-assets/manifest.json --verify-assets
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: amplifier-unified-client-tui-${{ matrix.runner }}
+          name: amplifier-unified-client-tui-${{ matrix.target }}
           path: |
             .release-assets/*
           if-no-files-found: error
+          retention-days: 14
+          include-hidden-files: true
+      - name: Retain private qualification diagnostics
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: qualification-diagnostics-${{ matrix.target }}
+          path: .evidence/current
+          include-hidden-files: true
+          if-no-files-found: warn
           retention-days: 14
 # No automatic tag, publication, deployment or credentialed provider call.
 
