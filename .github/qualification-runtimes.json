@@ -1,9 +1,45 @@
 {
+  "linux-arm64": {
+    "sourceCommit": "ecbb28f04a454fa1fa116a9ee20de6ad412456cc",
+    "wheelRun": 38220509193,
+    "manifestSha256": "9108bd5990ae1191e474d9e2e905f27361bf6e916914aacb81c753511edf98e7",
+    "wheelSha256": "5a96773641476163b1bcfcc087c460c56f6848c635869c19a0d76021e6e2b971",
+    "filename": "amplifier_unified_client_tui-0.5.0rc2-py3-none-linux_aarch64.whl",
+    "runtimes": {
+      "node": {
+        "version": "22.22.0",
+        "url": "https://nodejs.org/download/release/v22.22.0/node-v22.22.0-linux-arm64.tar.gz",
+        "sha256": "25ba95dfb96871fa2ef977f11f95ea90818c8fa15c0f2110771db08d4ba423be",
+        "archiveRoot": "node-v22.22.0-linux-arm64",
+        "executable": "bin/node",
+        "bytes": 56562212,
+        "executableSha256": "8eeefcacdf48f58541a651016e604055d14a992e39df98636b76495bc7244395",
+        "archive": "tar.gz",
+        "target": {
+          "os": "linux",
+          "arch": "arm64"
+        }
+      },
+      "python": {
+        "version": "3.13.16",
+        "url": "https://github.com/astral-sh/python-build-standalone/releases/download/20261003/cpython-3.13.16%2B20261003-aarch64-unknown-linux-gnu-install_only_stripped.tar.gz",
+        "sha256": "6e9641400f8debd9b7924b27b5ff0662c372852382e291a76c450c7b67414cf6",
+        "bytes": 29316850,
+        "archiveRoot": "python",
+        "executable": "bin/python3.13",
+        "archive": "tar.gz",
+        "target": {
+          "os": "linux",
+          "arch": "arm64"
+        }
+      }
+    }
+  },
   "linux-x86_64": {
-    "sourceCommit": "7311d4087f143f890340967e5a2fd5f0b0b0d5b7",
-    "wheelRun": 37195495064,
-    "manifestSha256": "444ebfbf1df11860882c385fa26ffdd7d0daa513a79af6a9ab2ce5055039928e",
-    "wheelSha256": "a40c30e03b7f8aaa3b95e250d3fd21e68c4c8fa6cbc5c6a119e94bd109a68244",
+    "sourceCommit": "ecbb28f04a454fa1fa116a9ee20de6ad412456cc",
+    "wheelRun": 38220509193,
+    "manifestSha256": "7316b14479fcfb9940ce139efc247d382e96cebac8b2189dee347f34c1fc59b5",
+    "wheelSha256": "c08896c8e38a993105d6bab9fd73979eee3bef42dfeae1db259b7d0d54318af5",
     "filename": "amplifier_unified_client_tui-0.5.0rc2-py3-none-linux_x86_64.whl",
     "runtimes": {
       "python": {
@@ -30,15 +66,16 @@
         "target": {
           "os": "linux",
           "arch": "x86_64"
-        }
+        },
+        "executableSha256": "fde6a4bf8d0562f7751d1a2d6cb9b417c4cfe107bbcb0aa3e9a24e125e348f48"
       }
     }
   },
   "macos-x86_64": {
-    "sourceCommit": "7311d4087f143f890340967e5a2fd5f0b0b0d5b7",
-    "wheelRun": 37195854173,
-    "manifestSha256": "84962fcc277caee1e85f5da4312a92317f00625dcaaea7e04667e90bee204ad9",
-    "wheelSha256": "4c790019c16d315504f67793db39f9e6d3fe00fc155fcdee3e5ab88e9d69f07f",
+    "sourceCommit": "ecbb28f04a454fa1fa116a9ee20de6ad412456cc",
+    "wheelRun": 38220509193,
+    "manifestSha256": "47665ca154d052bb74a0adb4f7516db6ab16ba25adac79b718bb5545f5c37b19",
+    "wheelSha256": "2a5e7f55270c7d2c6040465336ed65daa59e57a50d2e8504bd9ecaefbde1d298",
     "filename": "amplifier_unified_client_tui-0.5.0rc2-py3-none-macosx_10_12_x86_64.whl",
     "runtimes": {
       "python": {
@@ -65,6 +102,42 @@
         "target": {
           "os": "macos",
           "arch": "x86_64"
+        },
+        "executableSha256": "0b4f059915f3bf3c6cbb02422f4a529bfb21cbbec2d29851c9a5d833f78a04f6"
+      }
+    }
+  },
+  "macos-arm64": {
+    "sourceCommit": "ecbb28f04a454fa1fa116a9ee20de6ad412456cc",
+    "wheelRun": 38220509193,
+    "manifestSha256": "3eaa464e770bce39603718535ce1d6e73893d98ad87c9cc347cacf576f44c1e7",
+    "wheelSha256": "aa258ee9575191345aa746088463db84310fa0b22db22838e0902fb6a57fc0d7",
+    "filename": "amplifier_unified_client_tui-0.5.0rc2-py3-none-macosx_11_0_arm64.whl",
+    "runtimes": {
+      "node": {
+        "version": "22.23.3",
+        "url": "https://nodejs.org/dist/v22.23.3/node-v22.23.3-darwin-arm64.tar.gz",
+        "bytes": 49963763,
+        "sha256": "23b25245dcfb9af7262f8ff142e9e2e0af025368117329e7a7458a51e5922f53",
+        "archive": "tar.gz",
+        "archiveRoot": "node-v22.23.3-darwin-arm64",
+        "executable": "bin/node",
+        "target": {
+          "os": "macos",
+          "arch": "arm64"
+        }
+      },
+      "python": {
+        "version": "3.13.16",
+        "url": "https://github.com/astral-sh/python-build-standalone/releases/download/20261003/cpython-3.13.16%2B20261003-aarch64-apple-darwin-install_only_stripped.tar.gz",
+        "bytes": 25246115,
+        "sha256": "9e01f63bbb08576cd9c8bc2d0564d098cb30c8453a0cd4bcf6aef458f6d2a147",
+        "archive": "tar.gz",
+        "archiveRoot": "python",
+        "executable": "bin/python3.13",
+        "target": {
+          "os": "macos",
+          "arch": "arm64"
         }
       }
     }

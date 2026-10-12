@@ -3,13 +3,13 @@ on:
   workflow_dispatch:
     inputs:
       managed_runtime_only:
-        description: Supplement an existing sealed Intel wheel without rebuilding or publishing
+        description: Supplement an existing sealed platform wheel without rebuilding or publishing
         type: boolean
         default: false
       target:
         description: Managed-runtime supplement platform (used only when managed_runtime_only is true)
         type: choice
-        options: [linux-x86_64, macos-x86_64]
+        options: [linux-x86_64, linux-arm64, macos-x86_64, macos-arm64]
         default: linux-x86_64
       host_tarball_url:
         description: HTTPS URL for independently built @amplifier/unified-host npm tarball
@@ -117,7 +117,7 @@ jobs:
     permissions:
       contents: read
       actions: read
-    runs-on: ${{ inputs.target == 'linux-x86_64' && 'ubuntu-22.04' || 'macos-15-intel' }}
+    runs-on: ${{ inputs.target == 'linux-x86_64' && 'ubuntu-22.04' || inputs.target == 'linux-arm64' && 'ubuntu-24.04-arm' || inputs.target == 'macos-arm64' && 'macos-14' || 'macos-15-intel' }}
     timeout-minutes: 20
     env:
       PYTHONDONTWRITEBYTECODE: "1"
@@ -151,15 +151,6 @@ jobs:
         with:
           ref: ${{ steps.inputs.outputs.source }}
           path: .state/tui-source
-          persist-credentials: false
-      - name: Check out reviewed same-repository independent host input
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
-        with:
-          ref: 7f67c33759ed1148483f64ebcf0b54054155ccbe
-          path: .state/inputs
-          sparse-checkout: |
-            .qualification-inputs
-            scripts
           persist-credentials: false
       - name: Download previously sealed exact wheel artifact
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093

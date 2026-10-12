@@ -72,7 +72,7 @@ def run(name, command, logs, environment, cwd):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--target', choices=['linux-x86_64', 'macos-x86_64'], required=True)
+    parser.add_argument('--target', choices=['linux-x86_64', 'linux-arm64', 'macos-x86_64', 'macos-arm64'], required=True)
     arguments = parser.parse_args()
     spec = json.loads((ROOT / '.github/qualification-runtimes.json').read_text())[arguments.target]
     source = ROOT / '.state/tui-source'
@@ -100,10 +100,10 @@ def main():
                           str(assets / 'manifest.json'), '--verify-assets'], logs, environment, source)
     runtimes = json.loads(json.dumps(spec['runtimes']))
     executables = {}
-    inputs = ROOT / '.state/inputs'
+    inputs = ROOT
     peer = inputs / '.qualification-inputs/terminal-install-client.mjs'
     peer_sha = '070181c73c016612d42c8afc668576665026405c3347ca76d28e8c8c7ba7fd6b'
-    peer_source = 'e5ce9512bbf1e2cbf8dbff5ef53049d1f27f71ad'
+    peer_source = '0534e6516d7b0e1e67f345869137c4e8e016feff'
     provenance = json.loads((peer.parent / 'extractor-source.json').read_text())
     if sha(peer) != peer_sha or provenance['sha256'] != peer_sha or provenance['sourceCommit'] != peer_source:
         raise ValueError('Reviewed Root extraction peer changed')
@@ -131,19 +131,19 @@ def main():
                 raise ValueError('Root-extracted Node differs from verified bootstrap')
             actual = json.loads(subprocess.check_output([str(executable), '-p',
                 'JSON.stringify({os:process.platform,arch:process.arch})'], text=True))
-            if actual != {'os': 'linux' if arguments.target.startswith('linux') else 'darwin', 'arch': 'x64'}:
+            if actual != {'os': 'linux' if arguments.target.startswith('linux') else 'darwin', 'arch': 'arm64' if arguments.target.endswith('arm64') else 'x64'}:
                 raise ValueError('Managed Node target mismatch')
         else:
             actual = subprocess.check_output([str(executable), '-I', '-c',
                                                'import platform; print(platform.machine())'], text=True).strip()
-            if actual != 'x86_64':
+            if actual != ('aarch64' if arguments.target == 'linux-arm64' else 'arm64' if arguments.target == 'macos-arm64' else 'x86_64'):
                 raise ValueError('Managed Python target mismatch')
     run('persistence-observer-controls', [str(executables['python']),
         str(ROOT / '.github/scripts/test_saved_draft_observer.py')], logs, environment, ROOT)
     environment['PATH'] = str(executables['node'].parent) + os.pathsep + environment['PATH']
     environment.update(AMPLIFIER_TUI_NODE=str(executables['node']), TUI_TEST_CANDIDATES='1')
     run('independent-host', [sys.executable, 'scripts/prepare_qualification_host.py',
-        '--fixture-sha256', '54e53991d0acbdd3e0547379de7c41f04e65b0ff70653cd92b2d03b2d13ccb0f'],
+        '--fixture-sha256', '796a15f3c97731b8aa8d12c991df66af6f5d01f74db9d000bab9558ff9d4e6a8'],
         logs, environment, inputs)
     host = inputs / '.state/qualification-host/node_modules/@amplifier/unified-host/dist'
     environment.update(AHP_HOST_ENTRY=str(host / 'cli.js'), AHP_HOST_MODULE=(host / 'index.js').as_uri())
