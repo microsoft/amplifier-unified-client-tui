@@ -19,6 +19,13 @@ Desired behavior is distinct from current [acceptance](ACCEPTANCE.md).
 | CONFIG-01 | session.v1:6, ecosystem.v1:2, continuity.v1:2 | Standard connected model/settings selection and truthful optional controls | Advertised mutable schema choices, readback confirmation, refusal/unknown distinction, local draft preservation and receipt-only inspection | Implemented; standard installed host and actual terminal picker/refusal qualified; fresh native schema boundary reported separately |
 | MESSAGE-01 | interaction.v1:3, continuity.v1:4, ecosystem.v1:2 | Private canonical quotes and authenticated shared reactions | Reload and selection preserve drafts; no RPC on quote selection; bounded metadata reads, exact reaction receipts, missing refs and unknown outcomes never replay | Implemented; exact installed public-host/native and PTY evidence in MESSAGE-PARITY; selected metadata watch qualified in MESSAGE-WATCH-01 |
 
+Reaction receipt presentation (presentation.v1:7, continuity.v1:4): after verifying
+the exact original receipt, lead its inspection with a plain-language confirmation
+and retain the complete formatted evidence below it. Larger model-visible feedback
+records must not push the outcome out of the first screen. Qualification checks
+that confirmation and the saved original command, rather than assuming a JSON
+field remains at a fixed viewport position; scrolling and copying retain all data.
+
 | QUOTE-RECOVERY-01 | interaction.v1:3, continuity.v1:2, continuity.v1:4 | Original frozen quoted submission survives native refusal after host admission | Stale digest/native unknown execution retains exact private text/quote/command through reload, read-only inspection and newer draft/quote without any replay | Implemented; stale-digest native refusal, exact original reload and installed terminal inspection/copy passed; independent review required |
 
 | MESSAGE-WATCH-01 | continuity.v1:3, continuity.v1:4, ecosystem.v1:2 | Selected shared reaction updates via public resource watches | Other-client changes update current projection; stale scope/revision refuses, one coalesced read, detach/reconnect never repeat effects | Implemented; other-client live updates, reconnect and exact original uncertainty tested in installed public-host/native PTYs |

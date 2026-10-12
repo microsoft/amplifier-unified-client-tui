@@ -1,5 +1,6 @@
 """Canonical private intent and exact shared-message effects; no native store access."""
 import asyncio
+import json
 from copy import deepcopy
 
 import pytest
@@ -110,6 +111,11 @@ async def test_original_unknown_reaction_survives_reload_current_counts_cannot_s
     with pytest.raises(ValueError, match='original reaction'):
         await bridge.messages.react('display-1', '👎', True)
     assert await bridge.messages.recover(command) == (True, 'Original reaction confirmed. Inspect shared reactions for current counts.')
+    inspection = next(event for event in reversed(events) if event['type'] == 'host_review')
+    summary, evidence = inspection['detail'].split('\n\n', 1)
+    assert summary == 'Original reaction confirmed. Nothing was repeated.'
+    original = json.loads(evidence)
+    assert original['replayed'] is False and original['receipt']['commandId'] == command
     assert bridge.messages.rows[(bridge.selected, LOCATOR['messageId'])]['mine'] == ['✅']
     assert [call[0] for call in transport.calls] == ['message.reaction', 'message.read', 'message.receipt']
     assert transport.calls[-1][1] == {'commandId': command}
