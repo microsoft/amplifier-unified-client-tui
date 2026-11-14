@@ -14,3 +14,5 @@ Run scripts/qualify_current.py with owned independent host artifacts. Preserve r
 PTY renderer tests, source/build/installed evidence and explicit provider/device limits.
 Keep secrets, personal histories, private archives and machine paths out of Git.
 Do not modify or publish the older amplifier-app-tui repository from this checkout.
+
+This codebase is yours: what it's for and how it's built are your call, and you'll keep building on it.
