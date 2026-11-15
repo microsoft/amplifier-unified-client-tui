@@ -57,6 +57,27 @@ Deleting that local state can remove unsent drafts that the host never received.
 
 The host determines which agents, settings, and optional actions are available.
 
+
+<!-- ecosystem-map:start -->
+## Where this fits
+
+An independently installable AHP terminal experience; closing it detaches while host work continues.
+
+Roles: Experience. Supports: Conversation.
+
+![Ecosystem roles and component relationships](docs/ecosystem-map.svg)
+
+[Open the map](docs/ecosystem-map.svg) · [Product page source (private)](docs/product/index.html) · [Map guide](https://github.com/microsoft/amplifier-constellation/blob/main/docs/ecosystem-maps.md)
+
+<details>
+<summary>The five shared building blocks</summary>
+
+[![Experience, Conversation, Agent Instance, Connection and Tool](https://raw.githubusercontent.com/microsoft/amplifier-constellation/main/site/assets/art/building-blocks.png)](https://microsoft.github.io/amplifier-constellation/)
+
+</details>
+
+<!-- ecosystem-map:end -->
+
 ## Contributing
 
 Most contributions require you to agree to a
