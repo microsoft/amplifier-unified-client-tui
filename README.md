@@ -1,205 +1,80 @@
-# Amplifier Unified Client TUI
+# Amplifier Unified Terminal Client
 
-An independent native Ratatui client for an AHP 0.9 host. Multiple terminals and
-web clients follow the same host-owned ACP agent work while keeping separate drafts
-and navigation. Closing the terminal detaches; it does not cancel execution.
+Work with an AHP host from your terminal. This native Ratatui interface lets you
+send messages, inspect agent activity, and reopen conversations alongside web or
+other terminal clients. Each client keeps its own drafts and navigation. Closing
+the terminal detaches from the conversation; it does not cancel the agent's work.
 
-The package and intended repository name are `amplifier-unified-client-tui`.
-This repository is a fresh connected-client export. The existing
-`microsoft/amplifier-app-tui` repository remains separate and unchanged.
-A local package is not evidence of publication or installation elsewhere.
+This is the `amplifier-unified-client-tui` package. The older
+[Amplifier app TUI](https://github.com/microsoft/amplifier-app-tui) is a separate
+client.
 
-## Install and run
+## Install and connect
 
-Python 3.11+, Node 22+, macOS or Linux (Windows through WSL2) are required.
-The platform wheel contains the native renderer and bundled official AHP SDK.
-An installed wheel needs neither Cargo nor npm nor any Amplifier execution libraries.
-Source builds require Rust/Cargo and a C linker; regenerating the protocol bundle also requires npm.
+Use Python 3.11+, Node.js 22+, and [uv](https://docs.astral.sh/uv/) on macOS or
+Linux. Windows use is through WSL2; this package does not provide a native Windows
+wheel.
+
+To install from source, also install Rust/Cargo and a C linker, then run:
 
 ```sh
-uv tool install /path/to/amplifier_unified_client_tui-0.5.0rc2-PLATFORM.whl
+git clone https://github.com/microsoft/amplifier-unified-client-tui
+cd amplifier-unified-client-tui
+uv tool install .
 amplifier-unified-client-tui --server ws://127.0.0.1:8765/ahp
-amplifier-unified-client-tui --resume --workspace /workspace/on/the/host
-amplifier-unified-client-tui --session ahp-session:/SESSION_UUID
 ```
 
-`amplifier-tui` remains a local convenience executable for the same client.
-`AMPLIFIER_UNIFIED_URL` selects a default host; `AMPLIFIER_TUI_NODE` can name an
-explicit Node executable. Remote connections require WSS with verified TLS.
-Use `--token-file /private/token` and optionally `--ca-file /private/ca.pem` for
-an authenticated host. Tokens are sent in Authorization, never URLs, saved drafts,
-conversation history or command-line values. There is no implicit lookup in an old
-application's home directory. Loopback may omit a token only if that host permits it.
-Client identity is presentation identity, not authentication.
+If your distribution already supplies a platform wheel, install that file with
+`uv tool install /path/to/the/downloaded-wheel.whl` instead. The wheel includes the
+native renderer and bundled AHP SDK, so it does not require Cargo or npm to run.
 
-Each launch gets an independent client ID. `--client ID` restores that view's
-selection, drafts and uncertain input from `--state-dir`; concurrent processes
-cannot claim the same local identity. Private intent is partitioned by host URL.
-A cleared derived protocol cache can be fetched again; a deleted unsent private
-draft cannot be recovered from the host, which never received it.
-
-New managed conversations may use exact host-configured launch choices:
-
-```sh
-amplifier-unified-client-tui --new --managed --agent amplifier \
-  --bundle approved --provider configured-instance --model exact-model
-```
-
-`--agent` selects an advertised ACP implementation; `--provider` is its native
-provider instance. Bundle aliases resolve through passive managed options to an
-exact revision; model/provider choices are paired and validated by the native owner.
-`--effort` requires that pair. Initialization discovers choices without allocating
-or starting a runtime. Allocation and the first input happen only on explicit Send;
-original creation identity and choices persist before dispatch. Absent negotiation,
-unknown bundle/provider and unsupported resumed/existing-workspace overrides refuse.
-A managed conversation uses a fresh host-owned workspace, not `--workspace`.
+For a remote host, use WSS with verified TLS and `--token-file /private/token`;
+`--ca-file /private/ca.pem` is available for a custom certificate authority. Tokens
+are sent in the Authorization header, not in the URL. `AMPLIFIER_UNIFIED_URL`
+sets your default host.
 
 ## Everyday use
 
-Enter sends, Alt+Enter adds a newline, and paste never submits. F4 opens Actions.
-`/resume` lists root conversations in pages; `/new` opens a local composer and
-creates host work only on explicit Send. Full AHP IDs or unique catalog-ID prefixes
-can select a conversation. `latest` searches the current workspace scope. Raw native
-engine IDs require the host's mapping and are not assumed to be AHP resource IDs.
+- **Enter** sends; **Alt+Enter** inserts a newline. Pasting never submits.
+- **F4** opens Actions. `/new` opens a composer; work starts when you send.
+- `/resume` lists conversations. `--session ahp-session:/SESSION_UUID` opens a
+  known conversation directly.
+- `/messages` lets you inspect saved messages and quote one in a reply.
+- `/details` shows the selected agent's identity and failure information.
+- `/deliveries` and `/effects` inspect uncertain messages and operations without
+  repeating them.
 
-The first conversation view requests 50 turns. Older pages use standard fetchTurns;
-the renderer keeps every item in that requested window. Explicit backfill retains
-loaded observations until detach; this is not a native-context limit. Supported
-text, thinking, tools, errors, reported usage and resource references retain identity
-and ordering. Large tool details stay inspectable as structured source.
+To restore the same local view and drafts, reuse its explicit `--client ID` and
+state directory. Different terminals must not claim the same local identity.
+Deleting that local state can remove unsent drafts that the host never received.
 
-`/messages` (Actions → Messages) lists the loaded saved messages. Reply selects a
-private quote and Clear reply removes it; both preserve the draft and survive reload.
-Only explicit Send submits the quote's canonical locator. Refresh saved messages is
-an explicit bounded history read when a reference is absent. Streaming fragments and
-archived context cannot be quoted. Frozen quoted source appears with the saved reply.
-Inspect shared reactions reads the selected message. Add/Remove sets an offered emoji
-for the authenticated host account; it never sends a prompt. A lost acknowledgement
-blocks another change to that message until its original receipt is inspected. Current
-counts cannot prove an unknown request, and receipt inspection never repeats it.
-Quoted Send saves the complete frozen submission privately before dispatch. `/deliveries`
-shows its original text, quote and command even after host admission or unknown native
-execution. Inspect original quoted submission is read-only and works offline; it never
-resends or replaces a newer draft/quote. Host admission alone does not prove execution.
-A negotiated watch updates selected saved-message counts as other clients react.
-Reconnect restores a read-only baseline; explicit Inspect refreshes current counts if
-updates are unavailable. Watches never settle unknown original requests.
+## Reference
 
-Permission choices preserve the options supplied by the agent. Stop uses standard
-cancel; it does not promise force termination or undo. Rename changes the shared
-session title. `/queue` and `/pending` use an advertised shared host queue: explicit
-Queue admits text, saved edits and per-entry Resume rearm the offered identity, and
-Remove refuses already consumed input. Natural completion advances unheld work;
-cancellation, failure and host restart hold it. Queuing while idle may start work immediately. Opening this client never rearms work.
-`/steer` requires advertised Host and selected-agent support. It opens private text
-for explicit submission to this chat's active or next turn. Host acknowledgement and
-pending removal do not prove insertion. Corrections preserve original IDs and
-`/deliveries` checks exact applied, held or unknown receipts without resubmission.
-Quoted queue inputs and attachments refuse while preserving draft/quote. Unsupported
-takeover, history editing and device actions refuse explicitly, without converting a
-command into a model prompt.
+- [Client behavior](docs/VISION.md)
+- [Interaction contract](contracts/interaction.v1.md)
+- [Connection and recovery contract](contracts/session.v1.md)
+- [Package and build configuration](pyproject.toml)
 
-`/workspaces` pages existing host-authorized directories. Choosing one changes only
-this client and opens an unsent composer; `/resume` uses server-filtered root sessions
-when workspace.sessions is advertised. Standard-only hosts retain 50-row catalog
-paging with visibly local per-page filters and unverified child semantics.
-`/settings` (also `/models`) opens the standard host-provided model and conversation
-settings. Opening the picker refreshes only the selected standard session snapshot,
-without warming an agent. Only offered mutable choices can be selected; confirmation uses the action
-echo and current host values. The private draft stays unchanged and no message is
-sent. Refused changes and unknown outcomes have different notices. `/effects`
-inspects original setting receipts; current readback never proves an unknown request.
-Cold managed creation keeps its explicit launch flags until the host provides a
-standard session schema; this client does not warm an agent just to guess choices.
+The host determines which agents, settings, and optional actions are available.
 
-`/details` inspects the selected native identity and failure information. `/recovery`
-reviews a cold independent recovery copy; confirmation binds the inspected history
-revision and never submits the retained draft. `/managed-files` reviews only a proved
-managed allocation; disposal requires an explicit confirmation and host-owned
-dependent-owner/family protection. `/effects` reads original operation receipts.
-Unknown operations never replay. Escape dismisses a review and retains the composer.
+## Contributing
 
-Targeted agent UI tools inspect the actual renderer and use its current revision for
-draft replacement, selection and local panels. Offered settings inspection/change and
-conversation naming use the same human dispatch. The result identifies the original
-change command and its confirmed, refused or unknown status; host_effects and
-host_receipt expose bounded original settings/naming evidence. Standard naming
-receipts share the existing host-effect store and intent journal; their local UUID
-is not a remote receipt ID. Current values never settle an unknown change. A local keystroke invalidates a stale
-edit before autosave. Device-effect receipts are durable before the action and never
-replay unknown effects. Inspection includes a private draft only when explicitly requested.
-Selection is an admitted asynchronous operation; losing its result remains unknown.
+Most contributions require you to agree to a
+Contributor License Agreement (CLA) declaring that you have the right to, and actually do, grant us
+the rights to use your contribution. For details, visit [Contributor License Agreements](https://cla.opensource.microsoft.com).
 
-The local intent journal is saved before sending. AHP echoes establish acceptance,
-not successful execution. `/deliveries` retains unknown outcomes; its recovery action
-reads host receipts and never repeats the prompt. A disconnected client reconnects
-with official replay/snapshot semantics. Missing local state starts from fresh
-snapshots. Catalog cursors are discarded after reconnection or invalidation.
+When you submit a pull request, a CLA bot will automatically determine whether you need to provide
+a CLA and decorate the PR appropriately (e.g., status check, comment). Simply follow the instructions
+provided by the bot. You will only need to do this once across all repos using our CLA.
 
-## Boundaries and capability inventory
+This project has adopted the [Microsoft Open Source Code of Conduct](https://opensource.microsoft.com/codeofconduct/).
+For more information see the [Code of Conduct FAQ](https://opensource.microsoft.com/codeofconduct/faq/) or
+contact [opencode@microsoft.com](mailto:opencode@microsoft.com) with any additional questions or comments.
 
-| Surface | Current mapping |
-| --- | --- |
-| Session list/create/select/rename | Standard AHP catalog, session resources and actions |
-| Text send/stream/errors/cancel | Standard chat actions; stable turn ID is durable intent identity |
-| Tools and approvals | Official reducer, ordered generic rendering, exact offered permission IDs |
-| History and reconnect | view.turns 50, fetchTurns, official replay/snapshot; no command replay |
-| Private drafts/navigation/editors | Client disk and Ratatui; zero backend edit traffic |
-| Usage and artifacts | Reported usage and generic resource references; rich viewers remain separate |
-| Standard model / mutable conversation settings | Advertised standard schema and action echo/readback; no prompt, private draft retained |
-| Native module/provider configuration beyond standard schema | Host capability owner; no private runtime import or guessed setting |
-| Independent recovery copy / managed-file review | Negotiated preserve-history lifecycle; passive review, explicit exact-revision confirmation, original effect receipts |
-| Workspace discovery / scoped root sessions | Negotiated workspace.list/workspace.sessions; 50-row opaque cursor pages; local private selection |
-| Queue and steer | Advertised standard pending actions; per-entry held rearm, selected-chat current/next steering, exact original receipts; Mac ARM component PTYs qualified with an independent ACP fixture; installed-wheel and other-platform qualification remain separate |
-| Force stop, takeover, history editing | Explicitly unavailable until negotiated and mapped |
-| Voice/camera/clipboard/canvas/publishing | No claim of connected device/rich-feature support; use an advertised capable client |
-| Agent access to terminal-local UI | Standard client-provided inspect/action tools; actual renderer revision checks protect unflushed keystrokes; no permanent draft mirror |
-| Standalone execution | Not part of this independent client |
+## Trademarks
 
-The connected wire is solely AHP. A bundled Node sidecar uses the unmodified official
-`@microsoft/agent-host-protocol` SDK and reducers; Python adapts identified presentation
-rows to Ratatui. Streaming crosses the local presentation boundary as changed rows,
-not a serialized historical transcript per token. Client protocol state is bounded by
-selected resources and requested windows; explicit full-history recovery follows
-upstream semantics and is not silently truncated.
-
-The helper bounds incoming/outgoing frames, pending commands and output backlog;
-exceeding a bound fails visibly and keeps delivery uncertainty. The current two-process
-presentation topology is a compatibility choice to retain official reducers and the
-native renderer. Tests do not establish comparative latency or process-memory gains.
-
-## Development and evidence
-
-```sh
-uv sync --inexact --no-sources
-npm ci --prefix ahp
-npm run build --prefix ahp
-cargo build --locked --release --manifest-path frontends/ratatui/Cargo.toml
-AHP_HOST_ENTRY=/independent/host/dist/cli.js uv run --no-sync pytest -q tests/test_ahp_client.py
-TUI_TEST_CANDIDATES=1 AHP_HOST_ENTRY=/independent/host/dist/cli.js uv run --no-sync pytest -q tests/test_ahp_terminal.py
-uv run --no-sync ruff check .
-uv run --no-sync python scripts/check_direction.py
-uv build --wheel
-```
-
-Use owned temporary homes and fixture agents. Ordinary AHP tests launch the public
-host executable. With `AHP_HOST_MODULE`, the client-tool composition fixture imports
-only the host package public API, never private sibling implementation modules. The actual terminal
-smoke runs at 120×40 and 40×20 with streaming, permission, private draft and terminal
-restoration. `TUI_CONNECTED_EXECUTABLE` repeats it against an installed wheel.
-See [acceptance](notes/ACCEPTANCE.md) and [verification guide](SMOKE_TESTS.md).
-
-This client contains no embedded execution harness, `standalone` extra,
-`--standalone` bypass, CLI passthrough or direct native session writer. The supported
-test manifest covers AHP behavior and retained native renderer interactions.
-See [the boundary inventory](notes/AHP-CUTOVER.md).
-Paid provider calls, Copilot/Codex/Claude accounts, production Spark performance and
-physical-device interaction are separate acceptance boundaries. No source or wheel
-check alone proves publication, installation elsewhere or real-account compatibility.
-
-The [repo-local parity inventory](notes/CONNECTED-PARITY.md) records contract mapping,
-installed-peer evidence and remaining acceptance boundaries.
-
-Qualified release asset schema, supported-platform candidate workflow and safe
-publication handoff are described in [release/README.md](release/README.md).
-Only independently passing installed platform artifacts may be advertised.
+This project may contain trademarks or logos for projects, products, or services. Authorized use of Microsoft
+trademarks or logos is subject to and must follow
+[Microsoft's Trademark & Brand Guidelines](https://www.microsoft.com/legal/intellectualproperty/trademarks/usage/general).
+Use of Microsoft trademarks or logos in modified versions of this project must not cause confusion or imply Microsoft sponsorship.
+Any use of third-party trademarks or logos are subject to those third-party's policies.
