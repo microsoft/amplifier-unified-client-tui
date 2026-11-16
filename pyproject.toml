@@ -31,7 +31,7 @@ include = ["src", "frontends/ratatui/src", "frontends/ratatui/Cargo.toml", "fron
 
 [dependency-groups]
 dev = [
-    "pillow==12.1.1",
+    "pillow==13.0.0",
     "pyte==0.8.2",
     "pytest>=8",
     "pytest-asyncio>=1",
