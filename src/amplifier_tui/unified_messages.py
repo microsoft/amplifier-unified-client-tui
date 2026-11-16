@@ -423,5 +423,7 @@ class Messages:
         # Original evidence is not a current-state read and cannot replace newer counts.
         if b.selected == effect['session']:
             b.publish()
-            b.send('host_review', purpose='result', detail=json.dumps(value, ensure_ascii=False), label='')
+            b.send('host_review', purpose='reaction receipt',
+                   detail='Original reaction confirmed. Nothing was repeated.\n\n'
+                   + json.dumps(value, ensure_ascii=False, indent=2), label='')
         return True, 'Original reaction confirmed. Inspect shared reactions for current counts.'

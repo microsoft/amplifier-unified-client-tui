@@ -97,7 +97,10 @@ async def test_current_native_managed_flags_recovery_review_and_original_receipt
         assert not audit.exists()
         assert (await bridge.dispatch(request(bridge, 'submit', text='one explicit turn')))[0]
         await wait_for(lambda: bridge.session.get('status') == 'ready' and audit.exists())
-        assert audit.read_text() == 'second-model\n'
+        # Native also makes one automatic naming call using provider defaults.
+        # Require both exact original calls; later recovery must add neither.
+        await wait_for(lambda: audit.read_text() == 'second-model\nNone\n')
+        assert audit.read_text() == 'second-model\nNone\n'
         source = bridge.selected
         await bridge.dispatch(request(bridge, 'draft', text='private retained recovery draft'))
         await asyncio.sleep(1.5)  # Independent catalog completes its metadata scan.
@@ -112,10 +115,16 @@ async def test_current_native_managed_flags_recovery_review_and_original_receipt
         assert row['result']['uri'] != source
         assert bridge.selected == source
         assert bridge.store.data['drafts'][source] == 'private retained recovery draft'
-        assert audit.read_text() == 'second-model\n'
+        # Native also makes one automatic naming call using provider defaults.
+        # Require both exact original calls; later recovery must add neither.
+        await wait_for(lambda: audit.read_text() == 'second-model\nNone\n')
+        assert audit.read_text() == 'second-model\nNone\n'
         assert not (await bridge.dispatch(request(bridge, 'host_apply', token=review['token'], target=source)))[0]
         assert (await bridge.dispatch(request(bridge, 'host_receipt', id=effect_id)))[0]
-        assert audit.read_text() == 'second-model\n'
+        # Native also makes one automatic naming call using provider defaults.
+        # Require both exact original calls; later recovery must add neither.
+        await wait_for(lambda: audit.read_text() == 'second-model\nNone\n')
+        assert audit.read_text() == 'second-model\nNone\n'
         journal = bridge.store.path.with_suffix('.intent.jsonl').read_text()
         assert 'one explicit turn' in journal and effect_id in journal
     finally:
@@ -162,7 +171,10 @@ async def test_managed_file_review_requires_same_selection_and_preserves_canonic
         command_id, row = next(iter(bridge.store.data['hostEffects'].items()))
         assert row['result']['status'] == 'completed'
         assert (await bridge.dispatch(request(bridge, 'host_receipt', id=command_id)))[0]
-        assert audit.read_text() == 'second-model\n'
+        # Native also makes one automatic naming call using provider defaults.
+        # Require both exact original calls; later recovery must add neither.
+        await wait_for(lambda: audit.read_text() == 'second-model\nNone\n')
+        assert audit.read_text() == 'second-model\nNone\n'
     finally:
         await bridge.close()
 
@@ -181,7 +193,10 @@ async def test_actual_native_terminal_flags_details_recovery_and_draft_preservat
         assert not audit.exists()
         probe.send(b'Only explicit native terminal turn\r')
         await displayed([probe], lambda: 'Native graph reply:' in probe.text, timeout=30)
-        assert audit.read_text() == 'second-model\n'
+        # Native also makes one automatic naming call using provider defaults.
+        # Require both exact original calls; later recovery must add neither.
+        await wait_for(lambda: audit.read_text() == 'second-model\nNone\n')
+        assert audit.read_text() == 'second-model\nNone\n'
         probe.send(b'/details\r')
         await displayed([probe], lambda: 'Host review' in probe.text and 'Selected source only' in probe.text)
         probe.send(b'\x1b[27u')
@@ -215,7 +230,10 @@ async def test_actual_native_terminal_flags_details_recovery_and_draft_preservat
         (evidence / 'native-parity-terminal.ansi').write_bytes(bytes(probe.raw))
         state = json.loads((root / 'terminal/connections/terminal-parity.json').read_text())
         assert 'Private draft survives the review' in state['drafts'].values()
-        assert audit.read_text() == 'second-model\n'
+        # Native also makes one automatic naming call using provider defaults.
+        # Require both exact original calls; later recovery must add neither.
+        await wait_for(lambda: audit.read_text() == 'second-model\nNone\n')
+        assert audit.read_text() == 'second-model\nNone\n'
     finally:
         evidence = Path(os.environ.get('TUI_EVIDENCE_DIR', root))
         evidence.mkdir(parents=True, exist_ok=True)

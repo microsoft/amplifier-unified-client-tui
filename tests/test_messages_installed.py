@@ -218,7 +218,7 @@ async def test_actual_installed_terminal_quote_reload_reactions_missing_ref_and_
         probe.send(b'Inspect shared reactions\r')
         await displayed([probe], lambda: 'Inspect original reaction receipt' in probe.text)
         probe.send(b'Inspect original reaction receipt\r')
-        await displayed([probe], lambda: 'replayed' in probe.text and 'false' in probe.text)
+        await displayed([probe], lambda: 'Original reaction confirmed. Nothing was repeated.' in probe.text)
         assert next(iter(json.loads(store.path.read_text())['messageEffects'].values()))['status'] == 'confirmed'
         probe.send(b'\x1b')
         # Native naming can call the deterministic provider independently; exact
